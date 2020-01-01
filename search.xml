@@ -1,0 +1,636 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title>Redis aof文件过大处理办法</title>
+    <url>/2019/12/25/Redis-aof%E6%96%87%E4%BB%B6%E8%BF%87%E5%A4%A7%E5%A4%84%E7%90%86%E5%8A%9E%E6%B3%95/</url>
+    <content><![CDATA[<p>Redis AOF持久化机制有点类似于MySQL的binlog，不断的讲执行的命令记录到AOF文件中。</p>
+<h1 id="AOF持久化特点"><a href="#AOF持久化特点" class="headerlink" title="AOF持久化特点"></a>AOF持久化特点</h1><ol>
+<li>Redis会不断地将被执行的命令记录到AOF文件里面，所以随着Redis不断运行，AOF文件的体积也会不断增长。在极端情况下，体积不断增大的AOF文件甚至可能会用完硬盘的所有可用空间。</li>
+<li>Redis在重启之后需要通过重新执行AOF文件记录的所有写命令来还原数据集，所以如果AOF文件的体积非常大，那么还原操作执行的时间就可能会非常长。</li>
+</ol>
+<h1 id="解决AOF文件过大问题"><a href="#解决AOF文件过大问题" class="headerlink" title="解决AOF文件过大问题"></a>解决AOF文件过大问题</h1><p>为了解决AOF文件体积不断增大的问题，用户可以向Redis发送BGREWRITEAOF命令，这个命令会通过移除AOF文件中的冗余命令来重写（rewrite）AOF文件，使AOF文件的体积变得尽可能地小。BGREWRITEAOF的工作原理和BGSAVE创建快照的工作原理非常相似：Redis会创建一个子进程，然后由子进程负责对AOF文件进行重写。因为AOF文件重写也需要用到子进程，所以快照持久化因为创建子进程而导致的性能问题和内存占用问题，在AOF持久化中也同样存在。</p>
+<p>跟快照持久化可以通过设置save选项来自动执行BGSAVE一样，AOF持久化也可以通过设置auto-aof-rewrite-percentage选项和auto-aof-rewrite-min-size选项来自动执行BGREWRITEAOF。举个例子，假设用户对Redis设置了配置选项auto-aof-rewrite-percentage 100和auto-aof-rewrite-min-size 64mb，并且启动了AOF持久化，那么当AOF文件的体积大于64MB，并且AOF文件的体积比上一次重写之后的体积大了至少一倍（100%）的时候，Redis将执行BGREWRITEAOF命令。如果AOF重写执行得过于频繁的话，用户可以考虑将auto-aof-rewrite-percentage选项的值设置为100以上，这种做法可以让Redis在AOF文件的体积变得更大之后才执行重写操作，不过也会让Redis在启动时还原数据集所需的时间变得更长。</p>
+<h1 id="操作方法"><a href="#操作方法" class="headerlink" title="操作方法"></a>操作方法</h1><figure class="highlight shell"><table><tr><td class="code"><pre><span class="line">redis-cli -p 7002</span><br><span class="line">127.0.0.1:7002&gt;BGREWRITEAOF</span><br></pre></td></tr></table></figure>
+
+<p>当遇到重写失败的情况，查看日志，看是否是因为系统内存分配问题导致重写失败，检查系统内存分配策略<br><code>cat  /proc/sys/vm/overcommit_memory</code></p>
+<ol start="0">
+<li>表示内核将检查是否有足够的可用内存供应用进程使用；如果有足够的可用内存，内存申请允许；否则，内存申请失败，并把错误返回给应用进程。</li>
+<li>表示内核允许分配所有的物理内存，而不管当前的内存状态如何</li>
+<li>表示内核允许分配超过所有物理内存和交换空间总和的内存</li>
+</ol>
+<p>重写完成后，删除temp开头的临时aof文件</p>
+<p>详细的内存管理方式请见：<a href="/2019/07/16/linux系统内存容量调节/" title="linux系统内存容量调节">linux系统内存容量调节</a></p>
+]]></content>
+      <categories>
+        <category>Redis</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>使用CURL跟踪一个http请求的各段执行时间</title>
+    <url>/2019/12/25/%E4%BD%BF%E7%94%A8CURL%E8%B7%9F%E8%B8%AA%E4%B8%80%E4%B8%AAhttp%E8%AF%B7%E6%B1%82%E7%9A%84%E5%90%84%E6%AE%B5%E6%89%A7%E8%A1%8C%E6%97%B6%E9%97%B4/</url>
+    <content><![CDATA[<p>很多场景我们需要获取站点或者某个接口的各类响应时间，在不适用其他软件工具的情况下，系统命令CURL可以完美的帮我们打印出各段的响应时间。</p>
+<h2 id="命令演示"><a href="#命令演示" class="headerlink" title="命令演示"></a>命令演示</h2><figure class="highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> curl -o /dev/null -s -w %&#123;time_namelookup&#125;::%&#123;time_connect&#125;::%&#123;time_appconnect&#125;::%&#123;time_pretransfer&#125;::%&#123;time_starttransfer&#125;::%&#123;time_total&#125;<span class="string">"\n"</span>  <span class="string">"http://www.baidu.com"</span></span></span><br></pre></td></tr></table></figure>
+
+<p>我简单的向<a href="http://www.baidu.com" target="_blank" rel="noopener">www.baidu.com</a> 发送了一个get请求。<br>其中<code>-o</code> 选项把curl返回内容数据的写到<code>/dev/null</code>文件中去。<code>-s</code>为静默模式，把所有进度相关信息从stdout中屏蔽掉。<br><code>-w</code>选项指定了请求完成后输出什么信息出来。</p>
+<p><code>-w FORMAT</code><br>格式为一个字符串，可以包含任意数量变量字符串混合的纯文本，也支持使用一个已<code>@filename</code>命名的文件来对其结果做格式化。其支持的变量参数可以查看 <a href="https://curl.haxx.se/docs/manpage.html" target="_blank" rel="noopener">curl帮助文档</a></p>
+<h2 id="各类响应时间"><a href="#各类响应时间" class="headerlink" title="各类响应时间"></a>各类响应时间</h2><p> 演示命令的各参数含义如下,文中未做定义的变量含义请查阅<a href="https://curl.haxx.se/docs/manpage.html" target="_blank" rel="noopener">curl帮助文档</a>：<br> <figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">time_namelookup：DNS 解析域名耗时</span><br><span class="line">time_connect：client和server端建立TCP连接耗时</span><br><span class="line">time_appconnect: SSL建连耗时</span><br><span class="line">time_pretransfer:从client发出请求；到web的server到文件传输即将开始的耗时</span><br><span class="line">time_starttransfer：从client发出请求；到web的server响应第一个字节的时间，其中包括time_pretransfer的耗时</span><br><span class="line">time_total：client发出请求；到web的server发送会所有的相应数据的时间</span><br><span class="line">speed_download：下载速度  单位 byte/s</span><br></pre></td></tr></table></figure></p>
+<h2 id="格式化输出"><a href="#格式化输出" class="headerlink" title="格式化输出"></a>格式化输出</h2><figure class="highlight python"><table><tr><td class="code"><pre><span class="line">$ vim  format.txt</span><br><span class="line">\n</span><br><span class="line">            time_namelookup:  %&#123;time_namelookup&#125;\n</span><br><span class="line">               time_connect:  %&#123;time_connect&#125;\n</span><br><span class="line">            time_appconnect:  %&#123;time_appconnect&#125;\n</span><br><span class="line">           time_pretransfer:  %&#123;time_pretransfer&#125;\n</span><br><span class="line">              time_redirect:  %&#123;time_redirect&#125;\n</span><br><span class="line">         time_starttransfer:  %&#123;time_starttransfer&#125;\n</span><br><span class="line">                            ----------\n</span><br><span class="line">                 time_total:  %&#123;time_total&#125;\n</span><br><span class="line">\n</span><br><span class="line"></span><br><span class="line">$ curl -w <span class="string">"@format.txt"</span> -o /dev/null -s  https://www.baidu.com</span><br><span class="line"></span><br><span class="line">            time_namelookup:  <span class="number">1.511</span></span><br><span class="line">               time_connect:  <span class="number">1.724</span></span><br><span class="line">            time_appconnect:  <span class="number">2.281</span></span><br><span class="line">           time_pretransfer:  <span class="number">2.281</span></span><br><span class="line">              time_redirect:  <span class="number">0.000</span></span><br><span class="line">         time_starttransfer:  <span class="number">2.510</span></span><br><span class="line">                            ----------</span><br><span class="line">                 time_total:  <span class="number">2.724</span></span><br></pre></td></tr></table></figure>
+
+]]></content>
+      <categories>
+        <category>Linux系统管理</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>Python删除fastdfs图片</title>
+    <url>/2019/12/25/Python%E5%88%A0%E9%99%A4fastdfs%E5%9B%BE%E7%89%87/</url>
+    <content><![CDATA[<h1 id="删除fastdfs图片及刷新七牛CDN"><a href="#删除fastdfs图片及刷新七牛CDN" class="headerlink" title="删除fastdfs图片及刷新七牛CDN"></a>删除fastdfs图片及刷新七牛CDN</h1><p>python环境 python2.7(linux本身所带环境)</p>
+<p>使用前需要安装依赖库<code>qiniu</code>,<code>fdfs-client-py</code><br>client_file值为fastdfs的client配置文件，里面traker_server为要删除的fastdfs集群的tracker地址</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">pip install qiniu fdfs-client-py</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="code"><pre><span class="line"><span class="keyword">from</span> fdfs_client.client <span class="keyword">import</span> *</span><br><span class="line"><span class="keyword">import</span> qiniu</span><br><span class="line"><span class="keyword">from</span> qiniu <span class="keyword">import</span> CdnManager</span><br><span class="line"><span class="keyword">import</span> urlparse</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">search_source_file</span><span class="params">(file_id)</span>:</span></span><br><span class="line">	<span class="string">"""查看fastdfs中文件是否存在"""</span></span><br><span class="line">    <span class="keyword">pass</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">del_source_file</span><span class="params">(file_id)</span>:</span></span><br><span class="line">	<span class="string">"""</span></span><br><span class="line"><span class="string">	从fastdfs删除文件</span></span><br><span class="line"><span class="string">	"""</span></span><br><span class="line">    file_id = file_id</span><br><span class="line">    client_file = <span class="string">'/home/work/fastdfs/conf/client.conf'</span></span><br><span class="line">    client = Fdfs_client(client_file)</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        ret_delete = client.delete_file(file_id)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> ret_delete[<span class="number">0</span>] == <span class="string">'Delete file successed.'</span>:</span><br><span class="line">            <span class="keyword">print</span> <span class="string">'Delete file '</span>, file_id, <span class="string">'Successed.'</span></span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span></span><br><span class="line">    <span class="keyword">except</span> DataError:</span><br><span class="line">        <span class="keyword">print</span>  file_id, <span class="string">'not found.'</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">500</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">refresh_qiniu_url</span><span class="params">(url)</span>:</span></span><br><span class="line">    <span class="string">"""</span></span><br><span class="line"><span class="string">    刷新对应url的七牛CDN</span></span><br><span class="line"><span class="string">    """</span></span><br><span class="line">    access_key = <span class="string">'your_access_key'</span></span><br><span class="line">    secret_key = <span class="string">'your_secret_key'</span></span><br><span class="line">    auth = qiniu.Auth(access_key=access_key, secret_key=secret_key)</span><br><span class="line">    cdn_manager = CdnManager(auth)</span><br><span class="line"></span><br><span class="line">    urls = [url]</span><br><span class="line"></span><br><span class="line">    refresh_url_result = cdn_manager.refresh_urls(urls)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> refresh_url_result[<span class="number">0</span>][<span class="string">'code'</span>] == <span class="number">200</span>:</span><br><span class="line">        <span class="keyword">print</span> <span class="string">'Refresh '</span>, url, <span class="string">'Successed.'</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span></span><br><span class="line">    <span class="keyword">return</span> refresh_url_result</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">'__main__'</span>:</span><br><span class="line">    <span class="keyword">if</span> len(sys.argv)&lt;=<span class="number">1</span>:</span><br><span class="line">        <span class="keyword">print</span> <span class="string">'Usage:'</span>+<span class="string">'\n\tpython '</span> + sys.argv[<span class="number">0</span>] + <span class="string">' http://youdomin.domin/'</span>+ <span class="string">"FileID"</span></span><br><span class="line">        <span class="keyword">print</span> <span class="string">"eq:\tpython delete_img.py  http://youdomin.domin/fastdfs3/M00/DA/D2/ChONol3d8o-AEuDaAABwz-gtyfs212.png"</span></span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        url = sys.argv[<span class="number">1</span>]</span><br><span class="line">        img_domin = urlparse.urlparse(url).netloc</span><br><span class="line">        img_path = urlparse.urlparse(url).path</span><br><span class="line"></span><br><span class="line">        file_id = img_path[<span class="number">1</span>:]</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> del_source_file(file_id) != <span class="number">0</span>:</span><br><span class="line">            exit(<span class="number">500</span>)</span><br><span class="line">        refresh_qiniu_url(url)</span><br></pre></td></tr></table></figure>]]></content>
+      <categories>
+        <category>分布式文件系统</category>
+        <category>FastDFS</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>kafka生产环境集群方案及参数配置</title>
+    <url>/2019/12/10/kafka%E9%9B%86%E7%BE%A4%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE/</url>
+    <content><![CDATA[<p><img src="/images/kafka.jpeg" alt></p>
+<h1 id="写在前面"><a href="#写在前面" class="headerlink" title="写在前面"></a>写在前面</h1><p>本文主要聊一聊生产环境的kafka方案选型和重要集群参数配置相关的东西。生产环境的kafka集群部署方案前期的需要评估的东西还是挺多，比如kafka版本选择，操作系统选择，以及磁盘类型及磁盘容量相关的预估等。下面简单介绍一下：</p>
+<h1 id="部署方案"><a href="#部署方案" class="headerlink" title="部署方案"></a>部署方案</h1><h2 id="操作系统"><a href="#操作系统" class="headerlink" title="操作系统"></a>操作系统</h2><p>kafka由scala语言和java开发，编译之后的都是以class文件跑在jvm上面，所以kafka可以运行在市面上所有的OS，比如windos,Linux,mac OS但是不同的操作系统的差异还是给kafka集群造成的很大的影响。 毋庸置疑，你应该部署在Linux上面，生产环境的Kafka集群部署在Linux上面的最多，虽然这个结论不会出乎你的意料，但是详细了解选择Linux操作系统的原因还是要了解一下，主要包含以下三个方面：</p>
+<ul>
+<li>I/O模型的使用</li>
+<li>数据网络的传输效率</li>
+<li>社区支持度（毋庸置疑的是Linux平台的社区支持度最好）</li>
+</ul>
+<h3 id="什么是I-O模型？"><a href="#什么是I-O模型？" class="headerlink" title="什么是I/O模型？"></a>什么是I/O模型？</h3><p>简单的理解，I/O模型就是操作系统执行I/O指令的方法。主流的I/O模型有5中类型：阻塞式I/O、非阻塞式I/O、I/O多路复用、信号驱动I/O和异步I/O。每种I/O 模型都有各自典型的使用场景，比如Java中Socket对象的阻塞模式和非阻塞模式就对应于前两种模型;而 Linux中的系统调用select函数就属于I/O多路复用模型;大名鼎鼎的epoll系统调用则介于第三种和第四种模型之间;至于第五种模型，其实很少有Linux系统支持，反而是Windows系统提供了一个叫IOCP线程模型属于这一种。我们无需纠结每种I/O模型的实现细节，通常我认为后一种模型比前一种模型更高级，就像epoll比select要好一样。</p>
+<p>kafka的客户端底层使用了java的selector, java的selector在Linux的实现机制是epoll，而在windows操作系统的实现机制是select,因此kafka部署在Linux上面是占有优势的，能够获得更高效的I/O性能。</p>
+<h3 id="数据网络的传输效率的差别"><a href="#数据网络的传输效率的差别" class="headerlink" title="数据网络的传输效率的差别"></a>数据网络的传输效率的差别</h3><p>kafka生产和消费的消息都是通过网络传输的，而消息又保存在磁盘中，所以呢，kafka需要在磁盘和网络进行大量数据的传输，如果你是一名运维，你肯定听过Zero copy技术，如果没有，那你需要google一下这个名词。zero copy技术简言之就是当数据在磁盘和网络进行传输时避免内核态数据拷贝到用户态而实现的技术。Linux实现了这样的零拷贝机制，但在window上面必须你的java版本足够高才能支持，据我所知，只有java 8以上的版本才有这种技术，因此，我个人认为windows平台上面部署kafka集群只能用于个人开发环境。</p>
+<h2 id="kafka版本"><a href="#kafka版本" class="headerlink" title="kafka版本"></a>kafka版本</h2><p>kafka的版本选择很简单，建议至少使用0.11以上的版本，笔者从未使用过0.11以前的版本，一是工作时间不长，二是觉得到1.0以上的版本没有经过足够的市场验证。建议至少使用0.11版本，0.11是使用者最多的一个版本，也是官方patch版本最多的。所以如果有了问题，技术文档和支持方案也是最多的。</p>
+<h2 id="磁盘"><a href="#磁盘" class="headerlink" title="磁盘"></a>磁盘</h2><p>磁盘资源是对kakfa性能影响最大的，在做kafka集群磁盘时经常面临3个问题，我应该选择什么类型的磁盘，我应该用多大的容量，我是不是应该使用RAID。</p>
+<p>在做磁盘类型选择的时候，我应该选择普通的机械磁盘还是固态硬盘?前者成本低且容量大，但易损坏;后者性能优势大，不过单价高。我给出的建议是使用普通机械硬盘即可。因为kafka虽然大量使用磁盘资源，但他使用的方式大多是顺序读写操作，一定程度上面避免了机械盘随机读写慢的劣势。机械盘物美价廉，它容易损坏造成的可靠性问题可以通过软件层面副本机制来保证，所以使用普通的机械盘即可。当然如果你的集群如果是在像aws这样把计算资源和存储资源完全分离的云上面，这些磁盘类型选择的压根跟你没关系，只需要根据iops来评估需要什么类型就OK。</p>
+<p>第二个问题是我是否需要使用RAID，使用RAID的主要优势在与提供冗余的磁盘存储空间以及提供负载均衡。RAID的优势对于任何一个分布式系统都是有很强的吸引力，不过对于kafka而言，就显得不是很重要了，因为kafka自身实现了冗余机制来提供可靠性，另一个是使用了partion的概念来自己实现了负载均衡。所以在追求性价比的公司可以不使用RAID，使用普通的机械盘组成存储就可以。</p>
+<p>第三个问题是我应该使用多大的磁盘容量。这是一个比较经典的规划问题，kafka集群本身是把消息以日志的方式存储在磁盘上面，消息会默认被保存一段时间后会被清理。这个参数是可配置的，需要根据具体的业务场景来评估你的磁盘容量。 可以使用单位时间内的数据集大小来评估，也可以根据消息大小和单位时间内的消息条数来预估容量。下面给出了2种预估容量的方式：</p>
+<figure class="highlight python"><table><tr><td class="code"><pre><span class="line"><span class="number">10</span>G(每小时数据大小) * <span class="number">168</span>（假设保存<span class="number">7</span>天）* <span class="number">3</span>（保存副本数）x <span class="number">1.1</span>(预留<span class="number">10</span>%的容量) = <span class="number">5.41</span>T（集群总容量）</span><br><span class="line"><span class="number">1</span>KB(平均单条消息大小) * <span class="number">1000</span>，<span class="number">0000</span>（每小时<span class="number">1000</span>万条消息）* <span class="number">168</span>（假设保存<span class="number">7</span>天）* <span class="number">3</span>（保存副本数）x <span class="number">1.1</span>(预留<span class="number">10</span>%的容量) = <span class="number">5.16</span>T（集群总容量）</span><br></pre></td></tr></table></figure>
+
+<h2 id="带宽"><a href="#带宽" class="headerlink" title="带宽"></a>带宽</h2><p>目前市面上面的物理机房网络也好，云服务的vpc网络也好，常见的带宽有2种：1Gbps的千兆网络和10Gbps的万兆网络，千兆网络是大多数公司使用的标准配置了。 千兆网络在实际生产测试中在达到650M-700M之间就会产生丢包。所以最多使用的带宽资源占总带宽的70%，也就是最大资源使用情况下单台broker机器能使用的资源是700Mbps，但在生产环境中机器的带宽资源不可能只留给kafka使用，至少应该预留出来2/3的带宽资源给其他进程使用，比如监控，系统其他进程等其他。这样算下来单个broker使用的带宽也就只有240Mbps。</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">集群每小时处理数据量(MB) = 240Mbps/8(单节点每s处理数据大小) * 3600 * n(集群的节点数) / m(副本数)</span><br></pre></td></tr></table></figure>
+
+<p>最小的3个broker的集群，在3个副本的情况下，集群每小时大约处理108G的数据。</p>
+<p>“不谋万世者，不足谋一时；不谋全局者，不足谋一域”, 与其在集群使用过程中费时费力的调整，不如提前在集群部署时就根据实际的业务场景规划所需的环境，通盘考虑部署方案，从多个维度思考部署方案应该如何评估。</p>
+<hr>
+<h1 id="集群重要参数"><a href="#集群重要参数" class="headerlink" title="集群重要参数"></a>集群重要参数</h1><p>在生产环境的kafka集群有很多集群相关配置并未在官方文档中提现，但是这些参数对整个集群的影响是相当大的。我主要根据我所维护的生产环境的参数出发列出一些重要的。</p>
+<h2 id="broker级别参数"><a href="#broker级别参数" class="headerlink" title="broker级别参数"></a>broker级别参数</h2><p>kafka broker的参数相当多，有近200多个，大多数参数我们使用默认值就可以。下面简单介绍一下：<br>存储相关参数：</p>
+<ul>
+<li>log.dirs: 这个参数是笔者认为相当重要的参数，这个参数指定了broker日志存储的目录路径信息，此参数没有默认值，需要你显示的指定。他的格式是使用分号分割的一组目录。 笔者希望你把多块物理磁盘挂载到不同的log.dirs目录里面，这样做也是前文所述不需要使用SSD的原因，这样可以提升读写性能，比起单块磁盘，多块盘有更高的吞吐，相当于逻辑上做了一个RAID0. 而且如果你使用的kafka版本在1.1及其以上版本的话，还能实现故障转移，也就是Failover， broker上面的使用的任何一块磁盘坏了，此磁盘的数据会自动转移到其他正常的磁盘上面，broker还能正常提供工作。 这也是不需要使用RAID的原因。但是笔者使用的0.11版本并不支持此功能，但是笔者维护的集群使用的是AWS的EBS也无需考虑RAID等问题，所以使用0.11版本的用户如果不使用云盘的情况，考虑数据可靠性的情况下使用RAID还是很有必要的。</li>
+</ul>
+<p>zookeeper参数：<br>zookeeper是一个分布式的协调框架，负责协调管理并保存kafka集群的所有元数据信息，比如集群都有哪些broker在运行，已经创建了哪些topic, 以及topic的分区及leader副本等信息。</p>
+<ul>
+<li>zookeeper.connect 这也是一个已逗号分隔的CSV格式参数，值为zookeeper的各节点及端口信息，如<code>zookeeper1:2181,zookeeper2:2181,zookeeper3:2181</code>, 如果多个kafka集群使用同一个zookeeper集群，需要使用zookeeper的chroot概念，chroot类似于别名。假设我们有2个kafka集群（kafka1,kafka2），zookeeper.connect参数的配置如下:<figure class="highlight shell"><table><tr><td class="code"><pre><span class="line">zookeeper1:2181,zookeeper2:2181,zookeeper3:2181/kafka1</span><br><span class="line">zookeeper1:2181,zookeeper2:2181,zookeeper3:2181/kafka2</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<p>topic管理相关参数：</p>
+<ul>
+<li>auto.create.topics.enable:是否允许自动创建Topic。生产环境建议设置为false,从运维角度出发，线上应该创建什么topic必须有运维来把控，防止研发误操作来创建很多无用的topic来增加后期的维护成本。</li>
+<li>unclean.leader.election.enable:是否允许Unclean Leader选举。从数据完整性角度考虑，强烈建议关闭Unclean Leader选举这个参数。 每个partition都有多个副本来提供高可用，这些副本只有一个对外提供副本即leader副本。在做leader选举过程中，只有保存数据数据比较多的副本才有资格竞选leader, 那些进度落后太多的副本是没资格做这件事的。如果此参数为false状态，就是不让unclean的副本去做竞选leader的操作。反之，如果一个进度落后很多的副本能够竞选leader，并成功成为了leader,就会造成数据丢失。这种情况在生产环境是不允许出现的。</li>
+<li>auto.leader.rebalance.enable:是否允许定期进行Leader选举。此参数也应该设置为false. 因为定期进行leader选举对性能来讲没有收益，而且如果定期更换leader对客户端程序来讲成本是很高的。虽然此参数的默认参数也是false，但笔者还是建议显示的指定为false。</li>
+</ul>
+<p>数据留存相关参数：</p>
+<ul>
+<li>log.retention.{hour|minutes|ms}:这是一组参数，都是控制一条消息数据被保存多长时 间。从优先级上来说ms设置最高、minutes次之、hour最低。通常情况下使用hour级别的最多，笔者也是使用hour级别参数，<code>log.retention.hour=72</code>表示默认保存7天的数据,自动清除3天前的数据。如果消息要保存的时间要调长，也应相应的调大此值</li>
+<li>log.retention.bytes:这是指定Broker为消息保存的总磁盘容量大小。 默认值是-1，表示你想在这台broker上面保存多少数据都行。建议设置一个合理的上限。 </li>
+<li>message.max.bytes:控制Broker能够接收的最大消息大小。默认值是1000012。实际生产环境中单条消息突破1M的还是很多的，所以设置一个比较大的值是比较保险的，设置的大一些也仅仅只能限制最大的消息大小，并不会多耗费其他资源。</li>
+</ul>
+<h2 id="topic级别参数"><a href="#topic级别参数" class="headerlink" title="topic级别参数"></a>topic级别参数</h2><p>在新版本的kafka中提供了一些topic的相关参数，笔者在生产环境中并未做这些参数配置，这里简单讲说下这些参数：</p>
+<p>如果同时设置了topic级别参数和全局的broker参数，topic级别参数会覆盖全局参数。这个topic参数只是作为一个补充，让我们的生成环境更实用与具体的业务场景，也更灵活。</p>
+<p>消息保存相关参数：</p>
+<ul>
+<li>retention.ms:规定了该Topic消息被保存的时长。默认是7天，即该Topic只保存最近7天的消息。一旦 设置了这个值，它会覆盖掉Broker端的全局参数值。</li>
+<li>retention.bytes:规定了要为该Topic预留多大的磁盘空间。和全局参数作用相似，这个值通常在多 租户的Kafka集群中会有用武之地。当前默认值是-1，表示可以无限使用磁盘空间。</li>
+</ul>
+<p>topic也有最大消息大小相关的参数<code>max.message.byte</code>，如果在全局方面我们不好给定一个合适的值，就设置一个相对大的保险值，然后再有具体的topic来设置<code>max.message.byte</code>,这个在具体是业务场景下是很常见的。</p>
+<p>这些参数可以在创建topic时指定，也可以在修改topic时指定，个人觉得使用一种方式去操作会容易记忆，即在修改topic时区指定对应的参数，因为修改topic这种方式社区应该会统一由kafka-configs脚本来统一管理这些参数。</p>
+<h2 id="JVM参数"><a href="#JVM参数" class="headerlink" title="JVM参数"></a>JVM参数</h2><p>kafka服务端代码是在scala语言编写，最后运行在jvm上。所以说jvm的性能调优是很必要的。如果没有调整过建议调整到你本机内存的一半。只需设定下面两个环境变量就好。</p>
+<ul>
+<li>KAFKA_HEAP_OPTS:指定堆大小。</li>
+<li>KAFKA_JVM_PERFORMANCE_OPTS:指定GC参数。<figure class="highlight shell"><table><tr><td class="code"><pre><span class="line">export KAFKA_HEAP_OPTS=--Xms6g  --Xmx6g</span><br><span class="line">export KAFKA_JVM_PERFORMANCE_OPTS="-server -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+DisableExplicitGC -Djava.awt.headless=true"</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h2 id="操作系统参数"><a href="#操作系统参数" class="headerlink" title="操作系统参数"></a>操作系统参数</h2><p>Kafka并不需要设置太多的OS 参数，但有些因素最好还是关注一下，比如下面这几个:</p>
+<ul>
+<li><code>文件描述符限制</code>,笔者调整到100000,调整这个值并不会对系统有太大的影响,其次，如果你和笔者一样使用supervisord来管理进程的话，要把supervisord的<code>minfds</code>设置为和ulimit大小相差不大的值，不设置后果很严重，你会看到<code>Too many open files”的错误。</code></li>
+<li><code>文件系统类型</code> , 我建议使用xfs，官方测试出来的结果也要强于ext4等文件系统</li>
+<li><code>Swappiness</code> ,很多运维在做规划服务器规划过程中是不设置swap的。我们生产环境也是如此，但是我个人反倒觉得不要禁用swap分区，可以设置一个较小的值用于报警，因为一旦禁用swap分区，当内存耗尽时会触发OOM killer组件，会随机挑选进程去kill掉，根本不给用户任何预警，这也是我们使用supervisord去管理服务的一个方面，当进程挂掉之后，supervisord会把此进程重新拉起。</li>
+<li><code>提交时间</code>, 提交时间也就是flush的落盘时间。向Kafka发送数据并不是真要等数据被写入磁盘才会认为成功，而是只要数据被写入到操作系统的页缓存(Page Cache)上就可以了，随后操作系统根据LRU算法会定期将页缓存上的“脏”数据落盘到物理磁盘上。这个定期就是由提交时间来确定的，默认是5秒。一般情况下我们 会认为这个时间太频繁了，可以适当地增加提交间隔来降低物理磁盘的写操作。当然你可能会有这样的疑问:如果在页缓存中的数据在写入到磁盘前机器宕机了，那岂不是数据就丢失了。的确，这种情况数据确实就丢失了，但鉴于Kafka在软件层面已经提供了多副本的冗余机制，因此这里稍微拉大提交间隔去换取性能 还是一个合理的做法。</li>
+</ul>
+]]></content>
+      <categories>
+        <category>数据分析</category>
+        <category>KAFKA</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>容器管理之Docker常用命令</title>
+    <url>/2019/09/03/%E5%AE%B9%E5%99%A8%E7%AE%A1%E7%90%86%E4%B9%8BDocker%E5%B8%B8%E7%94%A8%E5%91%BD%E4%BB%A4/</url>
+    <content><![CDATA[<ol>
+<li><p>交互式运行容器<br>docker run -i -t ubuntu:15.10 /bin/bash<br> -t:在新容器内指定一个伪终端或终端。<br> -i:允许你对容器内的标准输入 (STDIN) 进行交互。</p>
+</li>
+<li><p>后台启动容器<br>docker run -d ubuntu:15.10 /bin/sh -c “while true; do echo hello world; sleep 1; done”</p>
+<pre><code>返回的为容器ID</code></pre></li>
+<li><p>查看哪些容器正在运行<br> docker ps<br> CONTAINER ID 为容器ID前几位（唯一）<br> NAMES  自动分配的容器名</p>
+</li>
+<li><p>查看容器内标准输出<br> docker logs [OPTIONS] CONTAINER<br> CONTAINER  可以是容器ID  或者容器名称<br> -f  以follow方式查看容器内的标准输出</p>
+</li>
+<li><p>停止容器<br> docker stop CONTAINER<br> CONTAINER  可以是容器ID  或者容器名称</p>
+</li>
+<li><p>查看容器运行监控数据<br>docker stats [OPTIONS] CONTAINER  </p>
+</li>
+<li><p>下载一个镜像（web镜像）<br> docker pull training/webapp  </p>
+</li>
+<li><p>运行容器到后台，并把端口映射在宿主机上<br> docker run -d -P training/webapp python app.py<br> -P:将容器内部使用的网络端口映射到我们使用的主机上，宿主机上端口随机可以通过docker ps 命令来查看映射的宿主机端口来访问。</p>
+</li>
+<li><p>运行容器到后台，并把端口映射出在宿主机的指定端口上<br> docker run -d -p 5000:5000 training/webapp python app.py<br> -p:将容器内部使用的网络端口映射到我们使用的主机上的指定端口上 host_port:docker_port </p>
+</li>
+<li><p>快速查看容器端口映射关系<br>docker port [OPTIONS] CONTAINER    </p>
+</li>
+<li><p>查看容器内正在运行的进程<br>docker top CONTAINER     </p>
+</li>
+<li><p>查看正在运行镜像的底层信息<br>docker inspect [OPTIONS] CONTAINER<br>eq: docker inspect 97ca73df2b6b<br>它会返回一个 JSON 文件记录着 Docker 容器的配置和状态信息。</p>
+</li>
+<li><p>重启容器<br>已经stop的容器可以根据docker ps [OPTIONS] 来找到容器信息来启动。<br>-l 查询最后一次创建的容器<br>-a 查询所有容器<br>docker start 1da0f09410f2 </p>
+</li>
+<li><p>删除容器<br>docker rm [OPTIONS] CONTAINER [CONTAINER…]<br>删除不需要的容器。删除过得容器无法重新启动。docker ps中不在显示。<br>删除容器时，容器必须是停止状态，否则会报错,<br>docker rm -f CONTAINER 强制删除正在运行的容器</p>
+</li>
+</ol>
+]]></content>
+      <categories>
+        <category>容器管理</category>
+        <category>Docker</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>Elasticsearch常用API使用</title>
+    <url>/2019/09/02/Elasticsearch%E5%B8%B8%E7%94%A8API%E4%BD%BF%E7%94%A8/</url>
+    <content><![CDATA[<p>以下API的使用均为在Kinbana的DevTools上面的运行方式，如果你使用的的CURL命令请自行转换为对应格式。</p>
+<h1 id="Index相关API"><a href="#Index相关API" class="headerlink" title="Index相关API"></a>Index相关API</h1><p>ES 有专门的index API ，用于创建，更新，删除索引配置等,创建API如下：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">put /test_index</span><br></pre></td></tr></table></figure>
+
+<h2 id="查看现有索引"><a href="#查看现有索引" class="headerlink" title="查看现有索引"></a>查看现有索引</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">GET _cat/indices</span><br></pre></td></tr></table></figure>
+
+<h2 id="删除索引"><a href="#删除索引" class="headerlink" title="删除索引"></a>删除索引</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">DELETE /test_index</span><br></pre></td></tr></table></figure>
+
+<h1 id="Document-API"><a href="#Document-API" class="headerlink" title="Document API"></a>Document API</h1><p>Elasticsearch也有丰富的Document API用于操作文档。</p>
+<h2 id="创建文档"><a href="#创建文档" class="headerlink" title="创建文档"></a>创建文档</h2><p>创建文档时，如果索引不存在，es会自动创建对应的，创建文档时可以指定文档id,也可以由es来自动生成文档id。</p>
+<h3 id="指定id创建文档"><a href="#指定id创建文档" class="headerlink" title="指定id创建文档"></a>指定id创建文档</h3><p>index 和type<br>ES6.1以后版本默认type使用doc 类型<br><strong>_version</strong>记录了文档的变化操作，操作文档_version会 +1，也是一种锁的机制。</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">PUT /test_index/_doc/1</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"username"</span>: <span class="string">"yangzhiheng"</span>,</span><br><span class="line">  <span class="string">"age"</span>: 26</span><br><span class="line">&#125;</span><br><span class="line">结果输出</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"_index"</span> : <span class="string">"test_index"</span>,</span><br><span class="line">  <span class="string">"_type"</span> : <span class="string">"_doc"</span>,</span><br><span class="line">  <span class="string">"_id"</span> : <span class="string">"1"</span>,</span><br><span class="line">  <span class="string">"_version"</span> : 2,</span><br><span class="line">  <span class="string">"result"</span> : <span class="string">"updated"</span>,</span><br><span class="line">  <span class="string">"_shards"</span> : &#123;</span><br><span class="line">    <span class="string">"total"</span> : 2,</span><br><span class="line">    <span class="string">"successful"</span> : 1,</span><br><span class="line">    <span class="string">"failed"</span> : 0</span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="string">"_seq_no"</span> : 1,</span><br><span class="line">  <span class="string">"_primary_term"</span> : 1</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="不指定id创建文档"><a href="#不指定id创建文档" class="headerlink" title="不指定id创建文档"></a>不指定id创建文档</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">POST /test_index/_doc</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"username"</span>:<span class="string">"zachary"</span>,</span><br><span class="line">  <span class="string">"age"</span>:27</span><br><span class="line">&#125;</span><br><span class="line">结果输出</span><br><span class="line">ES会生成一个id  acOPvWwBDmk_0NAxXsMk</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"_index"</span> : <span class="string">"test_index"</span>,</span><br><span class="line">  <span class="string">"_type"</span> : <span class="string">"_doc"</span>,</span><br><span class="line">  <span class="string">"_id"</span> : <span class="string">"acOPvWwBDmk_0NAxXsMk"</span>,</span><br><span class="line">  <span class="string">"_version"</span> : 1,</span><br><span class="line">  <span class="string">"result"</span> : <span class="string">"created"</span>,</span><br><span class="line">  <span class="string">"_shards"</span> : &#123;</span><br><span class="line">    <span class="string">"total"</span> : 2,</span><br><span class="line">    <span class="string">"successful"</span> : 1,</span><br><span class="line">    <span class="string">"failed"</span> : 0</span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="string">"_seq_no"</span> : 2,</span><br><span class="line">  <span class="string">"_primary_term"</span> : 1</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="查询文档"><a href="#查询文档" class="headerlink" title="查询文档"></a>查询文档</h2><p>查询文档</p>
+<h3 id="指定要查询的文档ID"><a href="#指定要查询的文档ID" class="headerlink" title="指定要查询的文档ID"></a>指定要查询的文档ID</h3><p><strong>_source</strong>存储了文档的完整原始数据</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">GET /test_index/_doc/1</span><br><span class="line"></span><br><span class="line">结果输出</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"_index"</span> : <span class="string">"test_index"</span>,</span><br><span class="line">  <span class="string">"_type"</span> : <span class="string">"_doc"</span>,</span><br><span class="line">  <span class="string">"_id"</span> : <span class="string">"1"</span>,</span><br><span class="line">  <span class="string">"_version"</span> : 2,</span><br><span class="line">  <span class="string">"_seq_no"</span> : 1,</span><br><span class="line">  <span class="string">"_primary_term"</span> : 1,</span><br><span class="line">  <span class="string">"found"</span> : <span class="literal">true</span>,</span><br><span class="line">  <span class="string">"_source"</span> : &#123;</span><br><span class="line">    <span class="string">"username"</span> : <span class="string">"yangzhiheng"</span>,</span><br><span class="line">    <span class="string">"age"</span> : 26</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">查询的文档不存在时http_code为404，返回值found为<span class="literal">false</span></span><br><span class="line">GET /test_index/_doc/2</span><br><span class="line">结果输出：</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"_index"</span> : <span class="string">"test_index"</span>,</span><br><span class="line">  <span class="string">"_type"</span> : <span class="string">"_doc"</span>,</span><br><span class="line">  <span class="string">"_id"</span> : <span class="string">"2"</span>,</span><br><span class="line">  <span class="string">"found"</span> : <span class="literal">false</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="搜索所有文档，用到-search-API-简单用法如下"><a href="#搜索所有文档，用到-search-API-简单用法如下" class="headerlink" title="搜索所有文档，用到_search API, 简单用法如下"></a>搜索所有文档，用到_search API, 简单用法如下</h3><p>查询语句，json格式，放在http body中发送到ES。<br>以下是返回的字段含义：</p>
+<ul>
+<li>took: 查询耗时，ms</li>
+<li>hits: 命中文档信息</li>
+<li>hits[“total”]: 符合条件的总文档数</li>
+<li>hits[“hits”] :返回的文档详情数据list,默认为前10个文档</li>
+<li>_index:索引名</li>
+<li>_id:文档ID</li>
+<li>_score：文档得分</li>
+<li>_source: 文档详情</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">GET /test_index/_search</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"query"</span>:&#123;</span><br><span class="line">    <span class="string">"term"</span>:&#123;</span><br><span class="line">      <span class="string">"_id"</span>:1</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">结果输出:</span><br><span class="line">    </span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"took"</span> : 1,</span><br><span class="line">  <span class="string">"timed_out"</span> : <span class="literal">false</span>,</span><br><span class="line">  <span class="string">"_shards"</span> : &#123;</span><br><span class="line">    <span class="string">"total"</span> : 1,</span><br><span class="line">    <span class="string">"successful"</span> : 1,</span><br><span class="line">    <span class="string">"skipped"</span> : 0,</span><br><span class="line">    <span class="string">"failed"</span> : 0</span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="string">"hits"</span> : &#123;</span><br><span class="line">    <span class="string">"total"</span> : &#123;</span><br><span class="line">      <span class="string">"value"</span> : 1,</span><br><span class="line">      <span class="string">"relation"</span> : <span class="string">"eq"</span></span><br><span class="line">    &#125;,</span><br><span class="line">    <span class="string">"max_score"</span> : 1.0,</span><br><span class="line">    <span class="string">"hits"</span> : [</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="string">"_index"</span> : <span class="string">"test_index"</span>,</span><br><span class="line">        <span class="string">"_type"</span> : <span class="string">"doc"</span>,</span><br><span class="line">        <span class="string">"_id"</span> : <span class="string">"1"</span>,</span><br><span class="line">        <span class="string">"_score"</span> : 1.0,</span><br><span class="line">        <span class="string">"_source"</span> : &#123;</span><br><span class="line">          <span class="string">"username"</span> : <span class="string">"yangzhiheng"</span>,</span><br><span class="line">          <span class="string">"age"</span> : 26</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;</span><br><span class="line">    ]</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="批量创建文档API"><a href="#批量创建文档API" class="headerlink" title="批量创建文档API"></a>批量创建文档API</h3><p>es允许一次创建多个文档，从而减少网络传输开销，提升写入速率<br>endpoint为_bulk 如下</p>
+<ul>
+<li>action_type: index   update , create, delete<br>index和create的区别</li>
+<li>create只创建，如果文档存在，报错</li>
+<li>index也为创建，如果文档存在，覆盖<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">POST _bulk</span><br><span class="line">&#123;<span class="string">"index"</span>:&#123;<span class="string">"_index"</span>:<span class="string">"test_index"</span>,<span class="string">"_id"</span>:<span class="string">"3"</span>&#125;&#125;</span><br><span class="line">&#123;<span class="string">"username"</span>:<span class="string">"yangzhiheng"</span>,<span class="string">"age"</span>:26&#125;</span><br><span class="line">&#123;<span class="string">"delete"</span>:&#123;<span class="string">"_index"</span>:<span class="string">"test_index"</span>,<span class="string">"_id"</span>:<span class="string">"1"</span>&#125;&#125;</span><br><span class="line">&#123;<span class="string">"update"</span>:&#123;<span class="string">"_id"</span>:<span class="string">"3"</span>,<span class="string">"_index"</span>:<span class="string">"test_index"</span>&#125;&#125;</span><br><span class="line">&#123;<span class="string">"doc"</span>:&#123;<span class="string">"age"</span>:27&#125;&#125;</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h3 id="批量查询文档API"><a href="#批量查询文档API" class="headerlink" title="批量查询文档API"></a>批量查询文档API</h3><p>es允许一次查询多个文档<br>endpoint为_mget<br>docs为数组list,可以获取不同index的文档。</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">GET /_mget</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"docs"</span>:[</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="string">"_index"</span>:<span class="string">"test_index"</span>,</span><br><span class="line">      <span class="string">"_id"</span>:<span class="string">"1"</span></span><br><span class="line">    &#125;,</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="string">"_index"</span>:<span class="string">"test_index"</span>,</span><br><span class="line">      <span class="string">"_id"</span>:<span class="string">"3"</span></span><br><span class="line">    &#125;</span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="更新文档"><a href="#更新文档" class="headerlink" title="更新文档"></a>更新文档</h3><p>更新文档使用PUT方法，指定对应的文档id<br>文档更新成功后result为updated,_version加1.</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">PUT /test_index/_doc/1</span><br><span class="line">&#123;</span><br><span class="line">  &quot;username&quot;:&quot;yangzhiheng&quot;</span><br><span class="line">&#125;</span><br><span class="line">结果输出</span><br><span class="line">&#123;</span><br><span class="line">  &quot;_index&quot; : &quot;test_index&quot;,</span><br><span class="line">  &quot;_type&quot; : &quot;_doc&quot;,</span><br><span class="line">  &quot;_id&quot; : &quot;1&quot;,</span><br><span class="line">  &quot;_version&quot; : 4,</span><br><span class="line">  &quot;result&quot; : &quot;updated&quot;,</span><br><span class="line">  &quot;_shards&quot; : &#123;</span><br><span class="line">    &quot;total&quot; : 2,</span><br><span class="line">    &quot;successful&quot; : 1,</span><br><span class="line">    &quot;failed&quot; : 0</span><br><span class="line">  &#125;,</span><br><span class="line">  &quot;_seq_no&quot; : 14,</span><br><span class="line">  &quot;_primary_term&quot; : 3</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="删除文档"><a href="#删除文档" class="headerlink" title="删除文档"></a>删除文档</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">test_index/_doc/1</span><br><span class="line">结果输出</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"_index"</span> : <span class="string">"test_index"</span>,</span><br><span class="line">  <span class="string">"_type"</span> : <span class="string">"_doc"</span>,</span><br><span class="line">  <span class="string">"_id"</span> : <span class="string">"1"</span>,</span><br><span class="line">  <span class="string">"_version"</span> : 5,</span><br><span class="line">  <span class="string">"result"</span> : <span class="string">"deleted"</span>,</span><br><span class="line">  <span class="string">"_shards"</span> : &#123;</span><br><span class="line">    <span class="string">"total"</span> : 2,</span><br><span class="line">    <span class="string">"successful"</span> : 1,</span><br><span class="line">    <span class="string">"failed"</span> : 0</span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="string">"_seq_no"</span> : 15,</span><br><span class="line">  <span class="string">"_primary_term"</span> : 3</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+]]></content>
+      <categories>
+        <category>数据分析</category>
+        <category>Elasticsearch</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>Nginx容灾配置</title>
+    <url>/2019/09/02/Nginx%E5%AE%B9%E7%81%BE%E9%85%8D%E7%BD%AE/</url>
+    <content><![CDATA[<p>Nginx在对外提供服务的时候，很少只是用一个服务节点，大多都是部署多台服务器，上层通过一定机制保证容错和负载均衡。</p>
+<h1 id="通过max-fails和fail-timeout来动态摘除故障服务器"><a href="#通过max-fails和fail-timeout来动态摘除故障服务器" class="headerlink" title="通过max_fails和fail_timeout来动态摘除故障服务器"></a>通过max_fails和fail_timeout来动态摘除故障服务器</h1><figure class="highlight nginx"><table><tr><td class="code"><pre><span class="line"><span class="attribute">upstream</span> backend &#123;</span><br><span class="line">      <span class="attribute">server</span> <span class="number">192.168.0.1:8081</span> max_fails=<span class="number">2</span> fail_timeout=<span class="number">10s</span> weight=<span class="number">1</span>;</span><br><span class="line">      <span class="attribute">server</span> <span class="number">192.168.0.2:8081</span> max_fails=<span class="number">2</span> fail_timeout=<span class="number">10s</span> weight=<span class="number">1</span>;</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="nginx使用proxy-next-upstream重试机制实现容灾配置"><a href="#nginx使用proxy-next-upstream重试机制实现容灾配置" class="headerlink" title="nginx使用proxy_next_upstream重试机制实现容灾配置"></a>nginx使用proxy_next_upstream重试机制实现容灾配置</h1>]]></content>
+      <categories>
+        <category>Nginx</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>ElasticSearch基础</title>
+    <url>/2019/08/24/ElasticSearch%E5%9F%BA%E7%A1%80/</url>
+    <content><![CDATA[<p><img src="/images/elasticsearch.jpeg" alt></p>
+<h1 id="学前问题"><a href="#学前问题" class="headerlink" title="学前问题"></a>学前问题</h1><ol>
+<li>什么是倒排索引？它的组成是什么？</li>
+<li>常见的相关性算法分析有哪些？</li>
+<li>为什么查询语句没有返回预期的文档？</li>
+<li>常用的数据类型有哪些？text和keyword的区别是什么？</li>
+<li>ES集群是如何搭建起来的？是如何实现故障转移的？</li>
+<li>Shard具体是由什么组成的？</li>
+</ol>
+<h1 id="Elasticseatch常见术语"><a href="#Elasticseatch常见术语" class="headerlink" title="Elasticseatch常见术语"></a>Elasticseatch常见术语</h1><h2 id="Document-文档"><a href="#Document-文档" class="headerlink" title="Document(文档)"></a>Document(文档)</h2><p>用户存储在ES中的数据文档，数据存储的最小单元，对应数据库的记录。<br>Json Object,由字段（Field）组成,常见的数据类型如下：</p>
+<ul>
+<li>字符串：text，keyword</li>
+<li>数值型： long, integer,short， byte,  double,float, half_float,scaled_float</li>
+<li>布尔： Boolean</li>
+<li>日期： date</li>
+<li>二进制： binary</li>
+<li>范围类型： integer_range， float_range, long_range, double_range,date_range</li>
+</ul>
+<p><strong>每个文档有唯一的id标识</strong></p>
+<ul>
+<li>自行制定</li>
+<li>es自动生成</li>
+</ul>
+<p><strong>Document MetaData（文档元数据）</strong><br>_index: 文档所在的索引名<br>_type: 文档所在的类型名<br>_id:  文档唯一ID<br>_uid: 组合ID, 由_type和_id组成（6.x _type不再起作用，同_id一样）<br>_source: 文档原始json数据,可以从这里获取每个字段的内容<br>_all: 整合所有字段内容到该字段，默认禁用。</p>
+<h2 id="Index（索引）"><a href="#Index（索引）" class="headerlink" title="Index（索引）"></a>Index（索引）</h2><p>具有相同字段的文档列表组成（文档的集合),对应数据库的表。<br>索引中存储具有相同结构的文档（Document）<br>每个索引都有自己的mapping定义，用于定义字段名和类型<br>一个集群可以有多个索引，比如：<br>nignx日志存储的时候可以按照日期每天生成一个索引来存储</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">nginx-log-2019-08-20</span><br><span class="line">nginx-log-2019-08-21</span><br><span class="line">nginx-log-2019-08-22</span><br><span class="line">nginx-log-2019-08-23</span><br></pre></td></tr></table></figure>
+
+<h2 id="Node-节点"><a href="#Node-节点" class="headerlink" title="Node(节点)"></a>Node(节点)</h2><pre><code>一个ES的运行实例，集群的构成单元</code></pre><h2 id="Cluster（集群）"><a href="#Cluster（集群）" class="headerlink" title="Cluster（集群）"></a>Cluster（集群）</h2><pre><code>有一个或多个节点组成，对外提供服务</code></pre><h2 id="Rest-API"><a href="#Rest-API" class="headerlink" title="Rest API"></a>Rest API</h2><p>Elasticsearch集群对外也是提供RESTful API，方便用户来进行操作。<br>    REST : REpresentational State Transfer<br>    URI指定资源，比如Index，Document等等。<br>    http method指定操作类型，如get，post,put,delete等</p>
+<h2 id="常用的使用方式由两种："><a href="#常用的使用方式由两种：" class="headerlink" title="常用的使用方式由两种："></a>常用的使用方式由两种：</h2><p>笔者更倾向于使用后者，因为kinbana使用起来方便，美观，便于调试。</p>
+<ol>
+<li>Curl命令行</li>
+<li>Kinbana DevTools<br> 左侧小扳手就是Devtools。 红线左侧为代码编辑区。此工具有自动补全功能。<br> 点击绿色按钮可以执行编辑的命令。右侧为运行结果。<br><img src="/images/kinbana1.png" alt></li>
+</ol>
+]]></content>
+      <categories>
+        <category>数据分析</category>
+        <category>Elasticsearch</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>Bash高级变量引用方法</title>
+    <url>/2019/08/07/Bash%E9%AB%98%E7%BA%A7%E5%8F%98%E9%87%8F%E5%BC%95%E7%94%A8%E6%96%B9%E6%B3%95/</url>
+    <content><![CDATA[]]></content>
+      <categories>
+        <category>Linux系统管理</category>
+        <category>Shell编程</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>DevOps监控系统分层模型</title>
+    <url>/2019/07/30/DevOps%E7%9B%91%E6%8E%A7%E7%B3%BB%E7%BB%9F%E5%88%86%E5%B1%82%E6%A8%A1%E5%9E%8B/</url>
+    <content><![CDATA[<p><img src="/images/monitor_layer.png" alt></p>
+]]></content>
+      <categories>
+        <category>DevOps</category>
+        <category>监控系统</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>分布式文件系统 FastDFS 之 FAQ</title>
+    <url>/2019/07/30/%E5%88%86%E5%B8%83%E5%BC%8F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9FFastDFS%E4%B9%8BFAQ/</url>
+    <content><![CDATA[<ol>
+<li><p><strong><code>上传文件失败，返回错误码28。</code></strong><br>返回错误码28，表示磁盘空间不足。注意FastDFS中有预留空间的概念，在tracker.conf中设置，配置项为：reserved_storage_space，缺省值为4GB，即预留4GB的空间。<br>请酌情设置reserved_storage_space这个参数，比如可以设置为磁盘总空间的20%左右。</p>
+</li>
+<li><p><strong><code>fdfs_trackerd或者fdfs_storaged的日志中出现：malloc task buff failed字样的错误。</code></strong><br>出现此类信息表示已经达到最大连接数。server端支持的最大连接数可以通过max_connections这个参数来设置。出现这样的问题，需要排查一下是否客户端使用不当导致的，比如客户端没有及时关闭无用的连接。</p>
+</li>
+<li><p><strong><code>客户端连接为什么被踢掉了？</code></strong><br>tracker server或storage server出现类似错误：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[2017-08-21 15:47:24] ERROR - file: tracker_nio.c, line: 213, client ip: 192.168.1.168, recv timeout, recv offset: 0, expect length: 0</span><br></pre></td></tr></table></figure>
+
+<p>表示客户端和sever建立连接后没有发送任何请求，idle时间超过network timeout该连接就会被踢掉。</p>
+</li>
+<li><p><strong><code>双 tracker 环境，其中一台宕机后，客户端依然会再次检查坏 tracker 是否可用，不可用换下一个问题?</code></strong></p>
+<ol>
+<li>个人觉得这样的故障转移不彻底，可用考虑在业务层通过连接池方式解决(加tracker心跳)</li>
+<li>将双 tracker 通过 Keepalive 做 HA，使用 vip 提供服务</li>
+<li>如果是云环境，建议在双tracke之前加一个LB，业务层使用云厂商提供的LB的域名或者IP方式连接。</li>
+</ol>
+</li>
+<li><p><strong><code>fadfs_monitor 命令查看集群状态，storage 状态始终处于 OFFLINE 状态?</code></strong></p>
+<ol>
+<li>查看日志确保 fdfs_trackerd 和 fdfs_storaged 服务正常运行</li>
+<li>如果日志正常依然 OFFLINE，可用临时关闭 fdfs_trackerd 和 fdfs_storaged 服务，删除 base_path 的元数据和日志，重新启动相关服务</li>
+</ol>
+</li>
+<li><p><strong><code>是否可用通过 http 方式上传文件?</code></strong><br>请参考 <a href="https://github.com/gzldx/lua-upload" target="_blank" rel="noopener">https://github.com/gzldx/lua-upload</a></p>
+</li>
+<li><p><strong><code>在编译 fastdfs-nginx-module 扩展时，提示编译错误</code></strong></p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">make[1]: *** [objs/addon/src/ngx_http_fastdfs_module.o] 错误 1 make[1]: Leaving directory `/root/nginx-1.4.1<span class="string">'</span></span><br><span class="line"><span class="string">make: *** [install] 错误 2</span></span><br></pre></td></tr></table></figure>
+
+<p>尝试将 libfastcommon 和 fastdfs-5.05 重新编译安装即可</p>
+</li>
+</ol>
+]]></content>
+      <categories>
+        <category>分布式文件系统</category>
+        <category>FastDFS</category>
+      </categories>
+      <tags>
+        <tag>FastDFS</tag>
+        <tag>分布式文件系统</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>CentOS 7不修改AMI支持C5和M5机型</title>
+    <url>/2019/07/29/CentOS-7%E4%B8%8D%E4%BF%AE%E6%94%B9AMI%E6%94%AF%E6%8C%81C5%E5%92%8CM5%E6%9C%BA%E5%9E%8B/</url>
+    <content><![CDATA[<h1 id="支持C5-M5的CentOS纯净版本"><a href="#支持C5-M5的CentOS纯净版本" class="headerlink" title="支持C5/M5的CentOS纯净版本"></a>支持C5/M5的CentOS纯净版本</h1><p>如果你能接受如下<code>CentOS</code>纯净版本，可以直接社区AMI中搜索：<code>809566369908</code>账号。这个是<code>Partner team</code>从<code>Global marketplace</code>中导入到中国区域多版本，版本保持了和Global一致。</p>
+<ul>
+<li>CentOS 6.5</li>
+<li>CentOS 6.10</li>
+<li>CentOS 7.6</li>
+</ul>
+<p><img src="/images/aws_000.png" alt></p>
+<h1 id="自行编译支持5系列机型"><a href="#自行编译支持5系列机型" class="headerlink" title="自行编译支持5系列机型"></a>自行编译支持5系列机型</h1><h2 id="注意事项"><a href="#注意事项" class="headerlink" title="注意事项"></a>注意事项</h2><ol>
+<li>不要进行<code>yum update</code>操作，这样会导致你的系统版本号、Kernel等都升级到最新的CentOS版本，比如: <code>CentOS 7.x</code>会变为最新的<code>CentOS 7.6</code>。当然如果你的用户可以接受最新版本的<code>CentOS</code>，可以执行此操作。</li>
+<li>请确保系统的<code>Kernel</code>、<code>Kernel header</code>版本保持一致，否则会导致后续ena编译时不通过。</li>
+<li><code>Kernel</code>版本不要低于3.2</li>
+</ol>
+<h2 id="编译步骤"><a href="#编译步骤" class="headerlink" title="编译步骤"></a>编译步骤</h2><p>本例使用CentOS 7.3非原版ISO导入</p>
+<h3 id="确认系统版本和Kernel版本；本例中都为3-10-0-514-26-2-el7"><a href="#确认系统版本和Kernel版本；本例中都为3-10-0-514-26-2-el7" class="headerlink" title="确认系统版本和Kernel版本；本例中都为3.10.0-514.26.2.el7"></a>确认系统版本和Kernel版本；本例中都为<code>3.10.0-514.26.2.el7</code></h3><p><img src="/images/aws_001.png" alt></p>
+<h3 id="安装相关软件包"><a href="#安装相关软件包" class="headerlink" title="安装相关软件包"></a>安装相关软件包</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">yum -y --enablerepo=extras install epel-release</span><br><span class="line">yum -y groupinstall <span class="string">"Development Tools"</span></span><br><span class="line">yum -y install binutils-devel elfutils-devel elfutils-libelf-devel ncurses-devel</span><br><span class="line">openssl-devel wget bc</span><br><span class="line">yum -y install patch dkms</span><br></pre></td></tr></table></figure>
+
+<h3 id="安装编译ENA"><a href="#安装编译ENA" class="headerlink" title="安装编译ENA"></a>安装编译ENA</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">wget https://github.com/amzn/amzn-drivers/archive/ena_linux_2.0.2.zip</span><br><span class="line">unzip ena_linux_2.0.2.zip</span><br><span class="line">mv amzn-drivers-ena_linux_2.0.2 /usr/src/ena-2.0.2</span><br><span class="line">cat &gt; /usr/src/ena-2.0.2/dkms.conf &lt;&lt;EOF</span><br><span class="line">PACKAGE_NAME=<span class="string">"ena"</span></span><br><span class="line">PACKAGE_VERSION=<span class="string">"2.0.2"</span></span><br><span class="line">AUTOINSTALL=<span class="string">"yes"</span></span><br><span class="line">REMAKE_INITRD=<span class="string">"yes"</span></span><br><span class="line">BUILT_MODULE_LOCATION[0]=<span class="string">"kernel/linux/ena"</span></span><br><span class="line">BUILT_MODULE_NAME[0]=<span class="string">"ena"</span></span><br><span class="line">DEST_MODULE_LOCATION[0]=<span class="string">"/updates"</span></span><br><span class="line">DEST_MODULE_NAME[0]=<span class="string">"ena"</span></span><br><span class="line">CLEAN=<span class="string">"cd kernel/linux/ena; make clean"</span></span><br><span class="line">MAKE=<span class="string">"cd kernel/linux/ena; make BUILD_KERNEL=\$&#123;kernelver&#125;"</span></span><br><span class="line">EOF</span><br><span class="line"></span><br><span class="line">dkms add -m ena -v 2.0.2</span><br><span class="line">dkms build -m ena -v 2.0.2</span><br><span class="line">dkms install -m ena -v 2.0.2</span><br><span class="line"></span><br><span class="line">dracut -f --add-drivers ena</span><br></pre></td></tr></table></figure>
+
+<p>如果顺利，这个时候可以看到ena已经安装成功<br><img src="/images/aws_002.png" alt></p>
+<h3 id="检查状态"><a href="#检查状态" class="headerlink" title="检查状态"></a>检查状态</h3><p>如果想知道为何你的系统改成5系列机型后无法启动可参考这篇文章<br><a href="https://amazonaws-china.com/cn/premiumsupport/knowledge-center/boot-error-linux-m5-c5/" target="_blank" rel="noopener">为何我的 Linux 实例在我将其类型更改为 C5 或 M5 后未启动？</a></p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">wget https://raw.githubusercontent.com/awslabs/aws-support-tools/master/EC2/C5M5InstanceChecks/c5_m5_checks_script.sh</span><br><span class="line">chmod +x c5_m5_checks_scrips.sh</span><br></pre></td></tr></table></figure>
+
+<p><img src="/images/aws_003.png" alt><br>笔者的运气比较好，所以执行检测直接就OK了。如果你使用原版CentOS ISO执行的升级操作会遇到一下报错。<br><img src="/images/aws_004.png" alt><br>会发现ENA已经加载，但是nvme的检查会报错, 这个时候即使运行dracut命令也不能解决问题，因为nvme驱动没有能正确加载。</p>
+<h3 id="加载nvme驱动"><a href="#加载nvme驱动" class="headerlink" title="加载nvme驱动"></a>加载nvme驱动</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">modprobe nvme</span><br></pre></td></tr></table></figure>
+
+<p><img src="/images/aws_005.png" alt></p>
+<p>请确保nvme版本不低于1.0<br>再运行check脚本提示的<code>sudo dracut -f -v</code>命令，运行过程中会提示有些<code>command can’t be found</code>，可以忽略，只要最后能正常完成image加载就没有问题。<br><img src="/images/aws_006.png" alt><br>再运行c5_m5 check scripts，会发现报警已经消失。</p>
+<h3 id="可选操作：升级系统microcode。"><a href="#可选操作：升级系统microcode。" class="headerlink" title="可选操作：升级系统microcode。"></a>可选操作：升级系统microcode。</h3><p>因为C5所使用的Intel skylake芯片相对较新，所以升级microcode有助于让系统更好的识别新芯片。升级操作请自行Google</p>
+<h3 id="CLI修改实例以支持ena"><a href="#CLI修改实例以支持ena" class="headerlink" title="CLI修改实例以支持ena"></a>CLI修改实例以支持ena</h3><p>这个时候关机，选择C5实例类型，通过CLI修改实例以支持ena</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">aws ec2 modify-instance-attribute --region THE_INSTANCE_REGION --instance-id THE_INSTANCE_ID --ena-support</span><br></pre></td></tr></table></figure>
+
+<h3 id="重启实例"><a href="#重启实例" class="headerlink" title="重启实例"></a>重启实例</h3><p>实例重新启动后，可以看到CPU已经时最新的8124M也就是C5的CPU,同时，所有的内核版本都没有变化。</p>
+<p><img src="/images/aws_007.png" alt></p>
+<h3 id="升级完成之后磁盘的命名规则会和之前的-dev-xvdb的方式有所不同，强烈建议使用UUID的方式去挂载磁盘"><a href="#升级完成之后磁盘的命名规则会和之前的-dev-xvdb的方式有所不同，强烈建议使用UUID的方式去挂载磁盘" class="headerlink" title="升级完成之后磁盘的命名规则会和之前的/dev/xvdb的方式有所不同，强烈建议使用UUID的方式去挂载磁盘"></a>升级完成之后磁盘的命名规则会和之前的<code>/dev/xvdb</code>的方式有所不同，强烈建议使用<code>UUID</code>的方式去挂载磁盘</h3>]]></content>
+      <categories>
+        <category>AWS</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>saltstack常用命令</title>
+    <url>/2019/07/16/saltstack%E5%B8%B8%E7%94%A8%E5%91%BD%E4%BB%A4/</url>
+    <content><![CDATA[<p><img src="/images/saltstack.jpeg" alt></p>
+<h2 id="查看minion当前正在运行的jobs"><a href="#查看minion当前正在运行的jobs" class="headerlink" title="查看minion当前正在运行的jobs"></a>查看minion当前正在运行的jobs</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt '*' saltutil.running</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="查看指定jid的job（minion正在运行的jobs）"><a href="#查看指定jid的job（minion正在运行的jobs）" class="headerlink" title="查看指定jid的job（minion正在运行的jobs）"></a>查看指定jid的job（minion正在运行的jobs）</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt '*' saltutil.find_job &lt;jid&gt;</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="给指定的jid进程发送信号"><a href="#给指定的jid进程发送信号" class="headerlink" title="给指定的jid进程发送信号"></a>给指定的jid进程发送信号</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt '*' saltutil.signal_job &lt;jid&gt; &lt;single&gt;</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="终止指定的jid进程"><a href="#终止指定的jid进程" class="headerlink" title="终止指定的jid进程"></a>终止指定的jid进程</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt '*' saltutil.term_job &lt;jid&gt;</span></span><br><span class="line"><span class="comment"># salt op-test01-web.easydevops.lan saltutil.term_job 20171106104710947507</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="终止指定的jid进程（信号为9）"><a href="#终止指定的jid进程（信号为9）" class="headerlink" title="终止指定的jid进程（信号为9）"></a>终止指定的jid进程（信号为9）</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt '*' saltutil.kill_job &lt;jid&gt;</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="查看所有minion当前正在运行的jobs（在所有minions上运行saltutil-running）"><a href="#查看所有minion当前正在运行的jobs（在所有minions上运行saltutil-running）" class="headerlink" title="查看所有minion当前正在运行的jobs（在所有minions上运行saltutil.running）"></a>查看所有minion当前正在运行的jobs（在所有minions上运行saltutil.running）</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt-run jobs.active</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="从master-jobs-cache中查询指定jid的运行结果"><a href="#从master-jobs-cache中查询指定jid的运行结果" class="headerlink" title="从master jobs cache中查询指定jid的运行结果"></a>从master jobs cache中查询指定jid的运行结果</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt-run jobs.lookup_jid &lt;jid&gt;</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="列出当前master-jobs-cache中所有job"><a href="#列出当前master-jobs-cache中所有job" class="headerlink" title="列出当前master jobs cache中所有job"></a>列出当前master jobs cache中所有job</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># salt-run jobs.list_jobs</span></span><br></pre></td></tr></table></figure>
+
+]]></content>
+      <categories>
+        <category>自动化运维</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>Linux系统内存容量调节</title>
+    <url>/2019/07/16/linux%E7%B3%BB%E7%BB%9F%E5%86%85%E5%AD%98%E5%AE%B9%E9%87%8F%E8%B0%83%E8%8A%82/</url>
+    <content><![CDATA[<h1 id="缘起"><a href="#缘起" class="headerlink" title="缘起"></a>缘起</h1><p>笔者最近新部署的一套redis集群因为没有配置<strong><code>auto-aof-rewrite-percentage</code></strong>和<strong><code>auto-aof-rewrite-min-size</code></strong>选项，造成AOF文件不断增大，在手动进行<strong><code>BGREWRITEAOF</code></strong>时，观察日志发现系统分配内存问题导致AOF重写失败。所以研究了下Linux系统容量相关的内存调优。</p>
+<h1 id="系统内存调优"><a href="#系统内存调优" class="headerlink" title="系统内存调优"></a>系统内存调优</h1><p>与内存容量调节相关参数都保存在<strong><code>/proc/sys/vm</code></strong>目录中</p>
+<h2 id="overcommit-memory"><a href="#overcommit-memory" class="headerlink" title="overcommit_memory"></a>overcommit_memory</h2><p>规定决定是否接受超大内存请求的条件。这个参数有三个可能的值:</p>
+<blockquote>
+<p>0 — 默认设置。内核执行启发式内存过量使用处理，方法是估算可用内存量，并拒绝明显无效 的请求。遗憾的是因为内存是使用启发式而非准确算法计算进行部署，这个设置有时可能会造 成系统中的可用内存超载。<br>1 — 内核执行无内存过量使用处理。使用这个设置会增大内存超载的可能性，但也可以增强大 量使用内存任务的性能。<br>2 — 内存拒绝等于或者大于总可用 swap 大小以及 overcommit_ratio 指定的物理 RAM 比例 的内存请求。如果您希望减小内存过度使用的风险，这个设置就是最好的。如果系统的Swap分区大于物理内存可以使用这个设置，如果系统没有设置swap或者swap分区很小不建议使用此参数，因为整个系统可能会OOM掉。</p>
+</blockquote>
+<h2 id="overcommit-ratio"><a href="#overcommit-ratio" class="headerlink" title="overcommit_ratio"></a>overcommit_ratio</h2><p>将 overcommit_memory 设定为 2 时，指定所考虑的物理 RAM 比例。默认为 50。</p>
+<h2 id="max-map-count"><a href="#max-map-count" class="headerlink" title="max_map_count"></a>max_map_count</h2><p>规定某个进程可能使用的最大内存映射区域。在大多数情况下，默认值 65530 就很合适。如果您 的程序需要映射比这个文件数更多的文件可增大这个值。</p>
+<h2 id="nr-hugepages"><a href="#nr-hugepages" class="headerlink" title="nr_hugepages"></a>nr_hugepages</h2><p>规定在内核中配置的超大页数。默认值为 0。只有系统中有足够的连续可用页时方可分配(或者取 消分配)超大页。为这个参数保留的页无法用于其他目的。</p>
+<h1 id="虚拟内存调节"><a href="#虚拟内存调节" class="headerlink" title="虚拟内存调节"></a>虚拟内存调节</h1><p>虚拟内存一般由进程、文件系统缓存以及内核消耗。虚拟内存的使用由很多因素决定，受以下参数影响:</p>
+<h2 id="swappiness"><a href="#swappiness" class="headerlink" title="swappiness"></a>swappiness</h2><p>参数值可为 0-100，控制系统 swap 的程序。高数值可优先系统性能，在进程不活跃时主动将其转 换出物理内存。低数值可优先互动性并尽量避免将进程转换处物理内存，并降低反应延迟。默认值 为 60。</p>
+<h2 id="min-free-kbytes"><a href="#min-free-kbytes" class="headerlink" title="min_free_kbytes"></a>min_free_kbytes</h2><p>保证系统间可用的最小 KB 数。这个值可用来计算每个低内存区的水印值，然后为其大小按比例分 配保留的可用页。</p>
+<blockquote>
+<p><strong>设定这个参数时请小心，因为该值过低和过高都有问题。<br>min_free_kbytes 太低可防止系统重新利用内存。这可导致系统挂起并让 OOM 杀死多个 进程。<br>但将这个参数值设定太高(占系统总内存的 5-10%)会让您的系统很快会内存不足。Linux 的设计是使用所有可用 RAM 缓存文件系统数据。设定高 min_free_kbytes 值的结果是在 该系统中花费太多时间重新利用内存。</strong></p>
+</blockquote>
+<h2 id="dirty-ratio"><a href="#dirty-ratio" class="headerlink" title="dirty_ratio"></a>dirty_ratio</h2><p>规定百分比值。当脏数据组成达到系统内存总数的这个百分比值后开始写下脏数据(pdflush)。 默认值为 20。</p>
+<h2 id="dirty-background-ratio"><a href="#dirty-background-ratio" class="headerlink" title="dirty_background_ratio"></a>dirty_background_ratio</h2><p>规定百分比值。当脏数据组成达到系统内存总数的这个百分比值后开始在后端写下脏数据 (pdflush)。默认值为 10。</p>
+<h2 id="drop-caches"><a href="#drop-caches" class="headerlink" title="drop_caches"></a>drop_caches</h2><p>将这个值设定为 1、2 或者 3 让内核放弃各种页缓存和 slab 缓存的各种组合。</p>
+<blockquote>
+<p>1 系统无效并释放所有页缓冲内存。<br>2 系统释放所有未使用的 slab 缓冲内存。<br>3 系统释放所有页缓冲和 slab 缓冲内存。<br><strong>这是一个非破坏性操作。因为无法释放脏项目，建议在运行 sync 设定这个参数值。 不建议在生产环境中使用 drop_caches 释放内存。</strong></p>
+</blockquote>
+<h1 id="调整方法"><a href="#调整方法" class="headerlink" title="调整方法"></a>调整方法</h1><p>调整这些参数的方法可以分两种情况，临时调整和永久设定<br>已笔者遇到的AOF重写失败情况为例，需要临时调节。</p>
+<h2 id="临时调节"><a href="#临时调节" class="headerlink" title="临时调节"></a>临时调节</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># echo 1 &gt; /proc/sys/vm/overcommit_memory</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="永久设定"><a href="#永久设定" class="headerlink" title="永久设定"></a>永久设定</h2><p>永久设定需要使用sysctl这个命令，示例如下：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># echo 'vm.overcommit_memory' &gt;&gt; /etc/sysctl.conf &amp;&amp; sysctl -p</span></span><br></pre></td></tr></table></figure>
+
+]]></content>
+      <categories>
+        <category>Linux系统管理</category>
+        <category>Redis</category>
+        <category>内存管理</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>Nginx+upstream针对后端服务器容错的处理流程</title>
+    <url>/2019/04/25/Nginx-upstream%E9%92%88%E5%AF%B9%E5%90%8E%E7%AB%AF%E6%9C%8D%E5%8A%A1%E5%99%A8%E5%AE%B9%E9%94%99%E7%9A%84%E5%A4%84%E7%90%86%E6%B5%81%E7%A8%8B/</url>
+    <content><![CDATA[<p><img src="/images/nginx.jpeg" alt><br>熟练掌握Nginx负载均衡的使用对运维人员来说是极其重要的！本文针对Nignx负载均衡upstream容错机制的使用做一梳理性说明</p>
+<h1 id="nginx的upstream容错"><a href="#nginx的upstream容错" class="headerlink" title="nginx的upstream容错"></a>nginx的upstream容错</h1><h2 id="nginx-判断节点失效状态"><a href="#nginx-判断节点失效状态" class="headerlink" title="nginx 判断节点失效状态"></a>nginx 判断节点失效状态</h2><p>Nginx默认判断失败节点状态以connect refuse和time out状态为准，不以HTTP错误状态进行判断失败，因为HTTP只要能返回状态说明该节点还可以正常连接，所以nginx判断其还是存活状态；除非添加了proxy_next_upstream指令设置对404、502、503、504、500和time out等错误进行转到备机处理，在next_upstream过程中，会对fails进行累加，如果备用机处理还是错误则直接返回错误信息（但404不进行记录到错误数，如果不配置错误状态也不对其进行错误状态记录），综述，nginx记录错误数量只记录timeout 、connect refuse、502、500、503、504这6种状态，timeout和connect refuse是永远被记录错误状态，而502、500、503、504只有在配置proxy_next_upstream后nginx才会记录这4种HTTP错误到fails中，当fails大于等于max_fails时，则该节点失效；</p>
+<h2 id="nginx-处理节点失效和恢复的触发条件"><a href="#nginx-处理节点失效和恢复的触发条件" class="headerlink" title="nginx 处理节点失效和恢复的触发条件"></a>nginx 处理节点失效和恢复的触发条件</h2><p>nginx可以通过设置max_fails（最大尝试失败次数）和fail_timeout（失效时间，在到达最大尝试失败次数后，在fail_timeout的时间范围内节点被置为失效，除非所有节点都失效，否则该时间内，节点不进行恢复）对节点失败的尝试次数和失效时间进行设置，当超过最大尝试次数或失效时间未超过配置失效时间，则nginx会对节点状会置为失效状态，nginx不对该后端进行连接，直到超过失效时间或者所有节点都失效后，该节点重新置为有效，重新探测.</p>
+<h2 id="所有节点失效后nginx将重新恢复所有节点进行探测"><a href="#所有节点失效后nginx将重新恢复所有节点进行探测" class="headerlink" title="所有节点失效后nginx将重新恢复所有节点进行探测"></a>所有节点失效后nginx将重新恢复所有节点进行探测</h2><p>如果探测所有节点均失效，备机也为失效时，那么nginx会对所有节点恢复为有效，重新尝试探测有效节点，如果探测到有效节点则返回正确节点内容，如果还是全部错误，那么继续探测下去，当没有正确信息时，节点失效时默认返回状态为502，但是下次访问节点时会继续探测正确节点，直到找到正确的为止。</p>
+<h2 id="通过proxy-next-upstream实现容灾和重复处理问题"><a href="#通过proxy-next-upstream实现容灾和重复处理问题" class="headerlink" title="通过proxy_next_upstream实现容灾和重复处理问题"></a>通过proxy_next_upstream实现容灾和重复处理问题</h2><p>ngx_http_proxy_module 模块中包括proxy_next_upstream指令<br>语法: proxy_next_upstream error | timeout | invalid_header | http_500 | http_502 | http_503 | http_504 |http_404 | off …;<br>默认值: proxy_next_upstream error timeout; 上下文: http, server, location</p>
+<h2 id="其中："><a href="#其中：" class="headerlink" title="其中："></a>其中：</h2><figure class="highlight shell"><table><tr><td class="code"><pre><span class="line">error   表示和后端服务器建立连接时，或者向后端服务器发送请求时，或者从后端服务器接收响应头时，出现错误。</span><br><span class="line">timeout   表示和后端服务器建立连接时，或者向后端服务器发送请求时，或者从后端服务器接收响应头时，出现超时。</span><br><span class="line">invalid_header   表示后端服务器返回空响应或者非法响应头</span><br><span class="line">http_500   表示后端服务器返回的响应状态码为500</span><br><span class="line">http_502   表示后端服务器返回的响应状态码为502</span><br><span class="line">http_503   表示后端服务器返回的响应状态码为503</span><br><span class="line">http_504   表示后端服务器返回的响应状态码为504</span><br><span class="line">http_404   表示后端服务器返回的响应状态码为404</span><br><span class="line">off   表示停止将请求发送给下一台后端服务器</span><br></pre></td></tr></table></figure>
+
+<h2 id="运用场景"><a href="#运用场景" class="headerlink" title="运用场景"></a>运用场景</h2><p><code>proxy_next_upstream http_500 | http_502 | http_503 | http_504 |http_404</code><br>当其中一台返回错误码404,500…等错误时，可以分配到下一台服务器程序继续处理，提高平台访问成功率，多可运用于前台程序负载，设置<code>proxy_next_upstream off</code>,因为proxy_next_upstream 默认值: proxy_next_upstream error timeout;</p>
+<p>场景:<br>当访问A时，A返回error timeout时，访问会继续分配到下一台服务器处理，就等于一个请求分发到多台服务器，就可能出现多次处理的情况，如果涉及到充值，就有可能充值多次的情况，这种情况下就要把proxy_next_upstream关掉即可<code>proxy_next_upstream off</code></p>
+<p>案例分析（nginx proxy_next_upstream导致的一个重复提交错误）：一个请求被重复提交，原因是nginx代理后面挂着2个服务器，请求超时的时候（其实已经处理了），结果nigix发现超时，有把请求转给另外台服务器又做了次处理。<br>解决办法：<br><strong>proxy_next_upstream:off</strong></p>
+<h1 id="nginx负载均衡"><a href="#nginx负载均衡" class="headerlink" title="nginx负载均衡"></a>nginx负载均衡</h1><p>Nginx的负载均衡方式这里介绍4种：rr(轮询模式)、ip_hash、fair、url_hash;</p>
+<p>Nginx自带的2种负载均衡为rr和ip_hash，fair和url_hash为第三方的插件，nginx在不配置负载均衡的模式下，默认采用rr负载均衡模式。</p>
+<h2 id="1）RR负载均衡模式"><a href="#1）RR负载均衡模式" class="headerlink" title="1）RR负载均衡模式"></a>1）RR负载均衡模式</h2><p>每个请求按时间顺序逐一分配到不同的后端服务器，如果超过了最大失败次数后（max_fails默认1)，在失效时间内(fail_timeout，默认10秒)，该节点失效权重变为0，超过失效时间后，则恢复正常，或者全部节点都为down后，那么将所有节点都恢复为有效继续探测，一般来说rr可以根据权重来进行均匀分配。</p>
+<h2 id="2）Ip-hash负载均衡模式"><a href="#2）Ip-hash负载均衡模式" class="headerlink" title="2）Ip_hash负载均衡模式"></a>2）Ip_hash负载均衡模式</h2><p>每个请求按访问ip的hash结果分配，这样每个访客固定访问一个后端服务器，可以解决session的问题，但是ip_hash会造成负载不均，有的服务请求接受多，有的服务请求接受少，所以不建议采用ip_hash模式，session共享问题可用后端服务的session共享代替nginx的ip_hash。</p>
+<h2 id="3）Fair（第三方）负载均衡模式"><a href="#3）Fair（第三方）负载均衡模式" class="headerlink" title="3）Fair（第三方）负载均衡模式"></a>3）Fair（第三方）负载均衡模式</h2><p>按后端服务器的响应时间来分配请求，响应时间短的优先分配。</p>
+<h2 id="4）url-hash（第三方）负载均衡模式"><a href="#4）url-hash（第三方）负载均衡模式" class="headerlink" title="4）url_hash（第三方）负载均衡模式"></a>4）url_hash（第三方）负载均衡模式</h2><p>和ip_hash算法类似，是对每个请求按url的hash结果分配，使每个URL定向到一个同 一个后端服务器，但是也会造成分配不均的问题，这种模式后端服务器为缓存时比较好。</p>
+<h1 id="Nginx负载均衡配置"><a href="#Nginx负载均衡配置" class="headerlink" title="Nginx负载均衡配置"></a>Nginx负载均衡配置</h1><p>Nginx的负载均衡采用的是upstream模块，其中默认的采用的负载均衡模式是轮询模式rr(round_robin),具体配置如下：</p>
+<h2 id="指令："><a href="#指令：" class="headerlink" title="指令："></a>指令：</h2><p><code>ip_hash</code><br>语法：ip_hash<br>默认值：none<br>使用字段：upstream<br>这个指令将基于客户端连接的IP地址来分发请求。</p>
+<p>哈希的关键字是客户端的C类网络地址，这个功能将保证这个客户端请求总是被转发到一台服务器上，但是如果这台服务器不可用，那么请求将转发到另外的服务器上，这将保证某个客户端有很大概率总是连接到一台服务器。无法将权重（weight）与ip_hash联合使用来分发连接。如果有某台服务器不可用，你必须标记其为”down”，如下例：</p>
+<figure class="highlight nginx"><table><tr><td class="code"><pre><span class="line"><span class="attribute">upstream</span> backend &#123;</span><br><span class="line">  ip_hash;</span><br><span class="line">  <span class="attribute">server</span>   backend1.kevin.com;</span><br><span class="line">  <span class="attribute">server</span>   backend2.kevin.com;</span><br><span class="line">  <span class="attribute">server</span>   backend3.kevin.com  down;</span><br><span class="line">  <span class="attribute">server</span>   backend4.kevin.com;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>server</code></p>
+<p>语法：server name [parameters]<br>默认值：none<br>使用字段：upstream<br>指定后端服务器的名称和一些参数，可以使用域名，IP，端口，或者unix socket。如果指定为域名，则首先将其解析为IP。<br>1.weight = NUMBER - 设置服务器权重，默认为1。<br>2.max_fails = NUMBER - 在一定时间内（这个时间在fail_timeout参数中设置）检查这个服务器是否可用时产生的最多失败请求数，默认为1，将其设置为0可以关闭检查，这些错误在proxy_next_upstream或fastcgi_next_upstream（404错误不会使max_fails增加）中定义。<br>3.fail_timeout = TIME - 在这个时间内产生了max_fails所设置大小的失败尝试连接请求后这个服务器可能不可用，同样它指定了服务器不可用的时间（在下一次尝试连接请求发起之前），默认为10秒，fail_timeout与前端响应时间没有直接关系，不过可以使用proxy_connect_timeout和proxy_read_timeout来控制。<br>4.down - 标记服务器处于离线状态，通常和ip_hash一起使用。<br>5.backup - (0.6.7或更高)如果所有的非备份服务器都宕机或繁忙，则使用本服务器（无法和ip_hash指令搭配使用）。</p>
+<h3 id="实例配置"><a href="#实例配置" class="headerlink" title="实例配置"></a>实例配置</h3><figure class="highlight nginx"><table><tr><td class="code"><pre><span class="line"><span class="attribute">upstream</span>  backend  &#123;</span><br><span class="line">  <span class="attribute">server</span>   backend1.kevin.com    weight=<span class="number">5</span>;</span><br><span class="line">  <span class="attribute">server</span>   <span class="number">127.0.0.1:8080</span>          max_fails=<span class="number">3</span>  fail_timeout=<span class="number">30s</span>;</span><br><span class="line">  <span class="attribute">server</span>   unix:/tmp/backend3;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注意：如果你只使用一台上游服务器，nginx将设置一个内置变量为1，即max_fails和fail_timeout参数不会被处理。<br>结果：如果nginx不能连接到上游，请求将丢失。<br>解决：使用多台上游服务器。</p>
+<p><code>upstream</code><br>语法：upstream name { … }<br>默认值：none<br>使用字段：http</p>
+<p>这个字段设置一群服务器，可以将这个字段放在proxy_pass和fastcgi_pass指令中作为一个单独的实体，它们可以可以是监听不同端口的服务器，并且也可以是同时监听TCP和Unix socket的服务器。服务器可以指定不同的权重，默认为1。</p>
+<p>示例配置</p>
+<figure class="highlight nginx"><table><tr><td class="code"><pre><span class="line"><span class="attribute">upstream</span> backend &#123;</span><br><span class="line">  <span class="attribute">server</span> kevin.com weight=<span class="number">5</span>;</span><br><span class="line">  <span class="attribute">server</span> <span class="number">127.0.0.1:8080</span>       max_fails=<span class="number">3</span>  fail_timeout=<span class="number">30s</span>;</span><br><span class="line">  <span class="attribute">server</span> unix:/tmp/backend3;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>请求将按照轮询的方式分发到后端服务器，但同时也会考虑权重。<br>在上面的例子中如果每次发生7个请求，5个请求将被发送到backend1.kevin.com，其他两台将分别得到一个请求，如果有一台服务器不可用，那么请求将被转发到下一台服务器，直到所有的服务器检查都通过。如果所有的服务器都无法通过检查，那么将返回给客户端最后一台工作的服务器产生的结果。</p>
+<h2 id="变量"><a href="#变量" class="headerlink" title="变量"></a>变量</h2><p>版本0.5.18以后，可以通过log_module中的变量来记录日志：</p>
+<figure class="highlight nginx"><table><tr><td class="code"><pre><span class="line"><span class="attribute">log_format</span> timing <span class="string">'<span class="variable">$remote_addr</span> - <span class="variable">$remote_user</span> [<span class="variable">$time_local</span>]  <span class="variable">$request</span> '</span></span><br><span class="line">    <span class="string">'upstream_response_time <span class="variable">$upstream_response_time</span> '</span></span><br><span class="line">    <span class="string">'msec <span class="variable">$msec</span> request_time <span class="variable">$request_time</span>'</span>;</span><br><span class="line"><span class="attribute">log_format</span> up_head <span class="string">'<span class="variable">$remote_addr</span> - <span class="variable">$remote_user</span> [<span class="variable">$time_local</span>]  <span class="variable">$request</span> '</span></span><br><span class="line">    <span class="string">'upstream_http_content_type <span class="variable">$upstream_http_content_type</span>'</span>;</span><br></pre></td></tr></table></figure>
+
+<p><code>$upstream_addr</code><br>前端服务器处理请求的服务器地址</p>
+<p><code>$upstream_cache_status</code><br>显示缓存的状态</p>
+<p>nginx在web应用上的占用率越来越高，其带的模块也越来越来。nginx_cache算是一个，虽和专业的cache工具相比略逊一筹，但毕竟部署简单，不用另装软件和资源开销，所以在web cache中也占了比重不小的一席。不过像squid和varnish等cache软件都自带的有cache查看工具，而且还可以方便的在http header上<br>显示出是否命中。nginx主要还是做web使用。所以想要得出命中率的大小，还需要通过日志进行统计，不过想要增加header查看倒很简单</p>
+<p><em>在http header上增加命中显示</em><br>nginx提供了$upstream_cache_status这个变量来显示缓存的状态，我们可以在配置中添加一个http头来显示这一状态，达到类似squid的效果。</p>
+<figure class="highlight nginx"><table><tr><td class="code"><pre><span class="line"><span class="attribute">location</span>  / &#123;</span><br><span class="line">        <span class="attribute">proxy_redirect</span>          <span class="literal">off</span>;</span><br><span class="line">        <span class="attribute">proxy_set_header</span>        Host            <span class="variable">$host</span>;</span><br><span class="line">        <span class="attribute">proxy_set_header</span>        X-Real-IP       <span class="variable">$remote_addr</span>;</span><br><span class="line">        <span class="attribute">proxy_set_header</span>        X-Forwarded-For <span class="variable">$proxy_add_x_forwarded_for</span>;</span><br><span class="line">        <span class="attribute">proxy_connect_timeout</span>   <span class="number">180</span>;</span><br><span class="line">        <span class="attribute">proxy_send_timeout</span>      <span class="number">180</span>;</span><br><span class="line">        <span class="attribute">proxy_read_timeout</span>      <span class="number">180</span>;</span><br><span class="line">        <span class="attribute">proxy_buffer_size</span>       <span class="number">128k</span>;</span><br><span class="line">        <span class="attribute">proxy_buffers</span>           <span class="number">4</span> <span class="number">128k</span>;</span><br><span class="line">        <span class="attribute">proxy_busy_buffers_size</span> <span class="number">128k</span>;</span><br><span class="line">        <span class="attribute">proxy_temp_file_write_size</span> <span class="number">128k</span>;</span><br><span class="line">        <span class="attribute">proxy_cache</span> cache;</span><br><span class="line">        <span class="attribute">proxy_cache_valid</span> <span class="number">200</span> <span class="number">304</span> <span class="number">1h</span>;</span><br><span class="line">        <span class="attribute">proxy_cache_valid</span> <span class="number">404</span> <span class="number">1m</span>;</span><br><span class="line">        <span class="attribute">proxy_cache_key</span> <span class="variable">$uri</span><span class="variable">$is_args</span><span class="variable">$args</span>;</span><br><span class="line">        <span class="attribute">add_header</span>  Nginx-Cache <span class="string">"<span class="variable">$upstream_cache_status</span>"</span>;</span><br><span class="line">        <span class="attribute">proxy_pass</span> http://backend;</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+
+<p>而通过curl或浏览器查看到的header如下：</p>
+<figure class="highlight http"><table><tr><td class="code"><pre><span class="line">HTTP/1.1 <span class="number">200</span> OK</span><br><span class="line"><span class="attribute">Date</span>: Mon, 22 Apr 2013 02:10:02 GMT</span><br><span class="line"><span class="attribute">Server</span>: nginx</span><br><span class="line"><span class="attribute">Content-Type</span>: image/jpeg</span><br><span class="line"><span class="attribute">Content-Length</span>: 23560</span><br><span class="line"><span class="attribute">Last-Modified</span>: Thu, 18 Apr 2013 11:05:43 GMT</span><br><span class="line"><span class="attribute">Nginx-Cache</span>: HIT</span><br><span class="line"><span class="attribute">Accept-Ranges</span>: bytes</span><br><span class="line"><span class="attribute">Vary</span>: User-Agent</span><br></pre></td></tr></table></figure>
+
+<p><code>$upstream_cache_status</code>包含以下几种状态：</p>
+<ul>
+<li>MISS 未命中，请求被传送到后端</li>
+<li>HIT 缓存命中</li>
+<li>EXPIRED 缓存已经过期请求被传送到后端</li>
+<li>UPDATING 正在更新缓存，将使用旧的应答</li>
+<li>STALE 后端将得到过期的应答</li>
+</ul>
+<p>nginx比较强大,可以针对单个域名请求做出单个连接超时的配置. 可以根据业务的：</p>
+<ul>
+<li>proxy_connect_timeout :后端服务器连接的超时时间_发起握手等候响应超时时间</li>
+<li>proxy_read_timeout:连接成功后，等候后端服务器响应时间_其实已经进入后端的排队之中等候处理（也可以说是后端服务器处理请求的时间）</li>
+<li>proxy_send_timeout :后端服务器数据回传时间_就是在规定时间之内后端服务器必须传完所有的数据</li>
+</ul>
+<p><code>$upstream_status</code><br>前端服务器的响应状态。</p>
+<p><code>$upstream_response_time</code><br>前端服务器的应答时间，精确到毫秒，不同的应答以逗号和冒号分开。</p>
+<p><code>$upstream_http_$HEADER</code><br>随意的HTTP协议头，如：$upstream_http_host</p>
+<h2 id="Proxy指令"><a href="#Proxy指令" class="headerlink" title="Proxy指令"></a>Proxy指令</h2><p><code>proxy_next_upstream</code></p>
+<p>语法:proxy_next_upstream [error|timeout|invalid_header|http_500|http_502|http_503|http_504|http_404|off]<br>默认值：proxy_next_upstream error timeout<br>使用字段：http, server, location</p>
+<p>确定在何种情况下请求将转发到下一个服务器：</p>
+<figure class="highlight shell"><table><tr><td class="code"><pre><span class="line">error     在连接到一个服务器，发送一个请求，或者读取应答时发生错误。</span><br><span class="line">timeout     在连接到服务器，转发请求或者读取应答时发生超时。</span><br><span class="line">invalid_header    服务器返回空的或者错误的应答。</span><br><span class="line">http_500    服务器返回500代码。</span><br><span class="line">http_502    服务器返回502代码。</span><br><span class="line">http_503    服务器返回503代码。</span><br><span class="line">http_504    服务器返回504代码。</span><br><span class="line">http_404    服务器返回404代码。</span><br><span class="line">off    禁止转发请求到下一台服务器。</span><br></pre></td></tr></table></figure>
+
+<p>转发请求只发生在没有数据传递到客户端的过程中。<br>其中记录到nginx后端错误数量的有500、502、503、504、timeout，404不记录错误。</p>
+<p><code>proxy_connect_timeout</code></p>
+<p>语法：proxy_connect_timeout timeout_in_seconds<br>默认值：proxy_connect_timeout 60s<br>使用字段：http, server, location</p>
+<p>指定一个连接到代理服务器的超时时间，单位为秒，需要注意的是这个时间最好不要超过75秒。这个时间并不是指服务器传回页面的时间（这个时间由proxy_read_timeout声明）。如果你的前端代理服务器是正常运行的，但是遇到一些状况（如没有足够的线程去处理请求，请求将被放在一个连接池中延迟处理），那么这个声明无助于服务器去建立连接。可以通过指定时间单位以免引起混乱，支持的时间单位有s(秒), ms(毫秒), y(年), M(月), w(周), d(日), h(小时),和 m(分钟)。<em>这个值不能大于597小时。</em></p>
+<p><code>proxy_read_timeout</code></p>
+<p>语法：proxy_read_timeout time<br>默认值：proxy_read_timeout 60s<br>使用字段：http, server, location</p>
+<p>决定读取后端服务器应答的超时时间，单位为秒，它决定nginx将等待多久时间来取得一个请求的应答。超时时间是指完成了两次握手后并且状态为established的超时时间。相对于proxy_connect_timeout，这个时间可以扑捉到一台将你的连接放入连接池延迟处理并且没有数据传送的服务器，注意不要将此值设置太低，某些情况下代理服务器将花很长的时间来获得页面应答（例如如当接收一个需要很多计算的报表时），当然你可以在不同的location里面设置不同的值。可以通过指定时间单位以免引起混乱，支持的时间单位有s(秒), ms(毫秒), y(年), M(月), w(周), d(日), h(小时),和 m(分钟)。<em>这个值不能大于597小时。</em></p>
+<p><em><code>proxy_send_timeout</code></em></p>
+<p>语法：proxy_send_timeout seconds<br>默认值：proxy_send_timeout 60s<br>使用字段：http, server, location</p>
+<p>设置代理服务器转发请求的超时时间，单位为秒，同样指完成两次握手后的时间，如果超过这个时间代理服务器没有数据转发到被代理服务器，nginx将关闭连接。可以通过指定时间单位以免引起混乱，支持的时间单位有s(秒), ms(毫秒), y(年), M(月), w(周), d(日), h(小时),和 m(分钟)。<em>这个值不能大于597小时。</em></p>
+<h1 id="Nginx-upstream负载均衡获取后端服务器的流程"><a href="#Nginx-upstream负载均衡获取后端服务器的流程" class="headerlink" title="Nginx upstream负载均衡获取后端服务器的流程"></a>Nginx upstream负载均衡获取后端服务器的流程</h1><p>GET_RR_PEER： 通过RR算法获取后端流程</p>
+<p><img src="/images/ngx-upstream-01.jpeg" alt></p>
+<blockquote>
+<p>K：是判断peer是否宕机和判断失效状态算法</p>
+</blockquote>
+<p><img src="/images/ngx-upstream-02.jpeg" alt="Alt text"></p>
+<blockquote>
+<p>FAIL:尝试次数用尽有，跳转到失败流程，如果有备机，备机再尝试监听，如果监听失败则返回NGX_BUSY,成功则返回当前状态。<br><img src="/images/ngx-upstream-03.jpeg" alt="Alt text"></p>
+</blockquote>
+<h1 id="验证环境部署"><a href="#验证环境部署" class="headerlink" title="验证环境部署"></a>验证环境部署</h1><p>Web服务器: nginx</p>
+<p>Web应用服务器：tomcat(2台)</p>
+<p>Nginx反向代理tomcat，即通过upstream将请求负载到后端两台tomcat的对应服务端口上。部署过程此处省略……</p>
+<h1 id="验证结果说明"><a href="#验证结果说明" class="headerlink" title="验证结果说明"></a>验证结果说明</h1><ul>
+<li>设置tomcat1超时时间，造成超时状态（总有一台server为有效状态）</li>
+</ul>
+<p>Tomcat1的connectionTimeout 设置为-1，永远超时，nginx设置tomcat1和tomcat2权重为10，tomcat1的max_fails为10，fail_timeout=120；在连接tomcat1的10次后，返回给nginx为10次超时，ngxin判断tomcat1为失效，然后将tomcat1超时时间恢复为1000重新启动tomcat1，在这段时间内nginx判断tomcat1还是失效状态，所以在2分钟后，nginx继续监听到tomcat1正常后，那么nginx会将tomcat1判断为有效，将连接继续均匀分配到2个tomcat上。</p>
+<ul>
+<li>设置tomcat1连接数量，造成超时状态（总有一台server为有效状态）</li>
+</ul>
+<p>Tomcat1的线程数量设置为1，nginx设置tomcat1和tomcat2权重为10，tomcat1的max_fails为10，fail_timeout=120；在连接tomcat1超过线程接受数量后，tomcat1会返回超时状态，在返回给nginx10次超时状态后，ngxin判断tomcat1为失效，然后将tomcat线程数量恢复为700,重新启动tomcat1，在这段时间内nginx判断tomcat1还是失效状态，超过2分钟失效后，nginx继续监听到tomcat1正常后，那么nginx会将tomcat1判断为有效，将连接继续均匀分配到2个tomcat上。</p>
+<ul>
+<li>设置tomcat1关闭，造成拒绝状态（总有一台server为有效状态）</li>
+</ul>
+<p>Tomcat1为关闭，nginx设置tomcat1和tomcat2权重为10，tomcat1的max_fails为10，fail_timeout=120；在连接tomcat1的10次后，nginx收到tomcat1返回connect refuse状态，ngxin判断tomcat1为失效，然后重新启动tomcat1，在这段时间内nginx判断tomcat1还是失效状态，超过2分钟失效后，nginx继续监听到tomcat1正常后，那么nginx会将tomcat1判断为有效，将连接继续均匀分配到2个tomcat上。</p>
+<ul>
+<li>设置tomcat1在nginx1标记失效，tomcat1恢复正常，在nginx失效范围内，将全部服务变为失效，然后重启</li>
+</ul>
+<p>Tomcat1为关闭，nginx设置tomcat1和tomcat2权重为10，tomcat1的max_fails为10，fail_timeout=120；在连接tomcat1的10次后，nginx收到tomcat1返回connect refuse状态，ngxin判断tomcat1为失效，然后重新启动tomcat1，在这段时间内nginx判断tomcat1还是失效状态，然后将tomcat2关闭，然后重启tomcat2，由于所有服务均失效，所以nginx 将所有服务重新置为有效进行监听，然后将2连接均匀分布到了tomcat1和tomcat2上。</p>
+<ul>
+<li>http错误状态，nginx是否记录失效</li>
+</ul>
+<p>nginx设置tomcat1和tomcat2权重为10，tomcat1的max_fails为10，fail_timeout=120；配置proxy_next_upstream 500、404、502、503、504、timeout后，当HTTP状态为500、502、503、504(timeout和refuse默认是记录失效的)时，nginx会判断该次请求为失败记录失败状态，其他所有HTTP均不记录失败</p>
+]]></content>
+      <categories>
+        <category>Nginx</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>python虚拟环境pyenv安装及简单使用</title>
+    <url>/2018/07/17/python%E8%99%9A%E6%8B%9F%E7%8E%AF%E5%A2%83pyenv%E5%AE%89%E8%A3%85%E5%8F%8A%E7%AE%80%E5%8D%95%E4%BD%BF%E7%94%A8/</url>
+    <content><![CDATA[<p><img src="/images/python.jpeg" alt></p>
+<h1 id="虚拟环境有什么意义？"><a href="#虚拟环境有什么意义？" class="headerlink" title="虚拟环境有什么意义？"></a>虚拟环境有什么意义？</h1><p>虚拟环境可以对项目依赖环境进行有效隔离。<br>打个比喻，现在有一个 Django 项目，使用的 Django 版本是1.8，但是系统的 Django 版本已经是更加新的1.11，如果使用系统的环境来运行项目，可能导致很多不兼容，于是，这个问题就可以使用一个虚拟环境来解决，使用 <strong><code>virtualenv</code></strong>来创建一个只给这个项目运行的开发环境，既可以保证项目的正常运行，也方便了之后移植项目。</p>
+<h1 id="为什么选择pyenv"><a href="#为什么选择pyenv" class="headerlink" title="为什么选择pyenv"></a>为什么选择pyenv</h1><p>相信很多Python开发者都习惯使用<strong><code>virtualenv</code></strong>来创建自己的虚拟环境，这没什么问题，笔者也是这么来用的。因为在开发过程无需管理自己的Python版本，也无需管理自己的虚拟环境，常用的<code>pycharm</code>这些工具都可以在创建项目时自动来生成一个虚拟的项目环境。如果是线上运行了多个不同Python版本的服务，有的2.6，有的2.7，还有一些3的各个版本。这是就牵扯到虚拟环境的管理工作。<strong><code>pyenv</code></strong>是在<strong><code>virtualenv</code></strong>的上层做了封装，所以拥有<strong><code>virtualenv</code></strong>的全部功能。在易用性方面也做的很好。下面是笔者常用的一些操作方法。</p>
+<p><strong><a href="https://github.com/yyuu/pyenv" target="_blank" rel="noopener">项目GitHub地址</a></strong>   <strong><a href="https://github.com/yyuu/pyenv-installer" target="_blank" rel="noopener">Pyenv的安装说明</a></strong></p>
+<h1 id="Pyenv脚本安装"><a href="#Pyenv脚本安装" class="headerlink" title="Pyenv脚本安装"></a>Pyenv脚本安装</h1><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># curl -L https://raw.githubusercontent.com/yyuu/pyenv-installer/master/bin/pyenv-installer | bash</span></span><br></pre></td></tr></table></figure>
+
+<p>执行完成后需要加入变量到用户配置文件：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># tail -4 .bash_profile </span></span><br><span class="line"><span class="built_in">export</span> PATH=<span class="string">"/root/.pyenv/bin:<span class="variable">$PATH</span>"</span></span><br><span class="line"><span class="built_in">eval</span> <span class="string">"<span class="variable">$(pyenv init -)</span>"</span></span><br><span class="line"><span class="built_in">eval</span> <span class="string">"<span class="variable">$(pyenv virtualenv-init -)</span>"</span></span><br><span class="line"><span class="built_in">export</span> PYENV_VIRTUALENV_DISABLE_PROMPT=1</span><br><span class="line">[root@easydevops ~]<span class="comment"># . .bash_profile  #重新source配置文件或重启终端</span></span><br></pre></td></tr></table></figure>
+
+<h1 id="Pyenv基本使用"><a href="#Pyenv基本使用" class="headerlink" title="Pyenv基本使用"></a><strong><code>Pyenv</code></strong>基本使用</h1><h2 id="pyenv-install-安装Python"><a href="#pyenv-install-安装Python" class="headerlink" title="pyenv install 安装Python"></a>pyenv install 安装Python</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># pyenv install 3.4.2  #直接指定python的版本号即可.</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="pyenv-virtualenv-创建虚拟环境"><a href="#pyenv-virtualenv-创建虚拟环境" class="headerlink" title="pyenv virtualenv 创建虚拟环境"></a>pyenv virtualenv 创建虚拟环境</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># pyenv virtualenv 3.4.2 jump</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="关联虚拟环境到本地目录"><a href="#关联虚拟环境到本地目录" class="headerlink" title="关联虚拟环境到本地目录"></a>关联虚拟环境到本地目录</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># pyenv local jump</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="列出本机可用的Python版本和已经创建的虚拟环境"><a href="#列出本机可用的Python版本和已经创建的虚拟环境" class="headerlink" title="列出本机可用的Python版本和已经创建的虚拟环境"></a>列出本机可用的Python版本和已经创建的虚拟环境</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># pyenv  versions</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="列出可安装的Python版本"><a href="#列出可安装的Python版本" class="headerlink" title="列出可安装的Python版本"></a>列出可安装的Python版本</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># pyenv  install -l</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="使用帮助"><a href="#使用帮助" class="headerlink" title="使用帮助"></a>使用帮助</h2><figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]#  pyenv help &lt;command&gt;</span><br></pre></td></tr></table></figure>
+
+<h1 id="管理虚拟环境中依赖包"><a href="#管理虚拟环境中依赖包" class="headerlink" title="管理虚拟环境中依赖包"></a>管理虚拟环境中依赖包</h1><p>依赖包的管理使用python包管理工具pip, pip支持把项目所需的依赖包列出并批量安装的功能。<br>使用方式如下：</p>
+<h2 id="导出依赖包"><a href="#导出依赖包" class="headerlink" title="导出依赖包"></a>导出依赖包</h2><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># cd jump</span></span><br><span class="line">[root@easydevops ~]<span class="comment"># pip freeze &gt; requirements.txt</span></span><br></pre></td></tr></table></figure>
+
+<p>需要注意的地方：</p>
+<blockquote>
+<p>指定生成文件的目录<br>文件生成之后，有时候需要调整安装包的顺序，例如一个安装包是依赖另一个的，则需要把依赖包放在靠前的位置<br>如果想安装某个包的最新版，则把==及后面的版本信息删除即可</p>
+</blockquote>
+<h2 id="复制项目环境"><a href="#复制项目环境" class="headerlink" title="复制项目环境"></a>复制项目环境</h2><p>首先新建一个虚拟环境，然后把当前位置切换到需求文件所在目录下，然后在新建的虚拟环境中运行以下命令就可以安装需求文件中所有的依赖库，相当于复制了一个虚拟环境。</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[root@easydevops ~]<span class="comment"># pip install -r requirements.txt</span></span><br></pre></td></tr></table></figure>]]></content>
+      <categories>
+        <category>Python</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>crond引发大量sendmail和postdrop进程问题</title>
+    <url>/2018/06/16/crond%E5%BC%95%E5%8F%91%E5%A4%A7%E9%87%8Fsendmail%E5%92%8Cpostdrop%E8%BF%9B%E7%A8%8B%E9%97%AE%E9%A2%98/</url>
+    <content><![CDATA[<h1 id="故障及现场描述"><a href="#故障及现场描述" class="headerlink" title="故障及现场描述"></a>故障及现场描述</h1><p>服务器OOM，强制重启，可以短暂解决问题，<code>ps -ef</code>查看有上千个进程，大部分都是<code>crond、sendmail、postdrop</code>。故障原因为大量上述进程导致系统OOM</p>
+<h1 id="故障原因"><a href="#故障原因" class="headerlink" title="故障原因"></a>故障原因</h1><p><code>crond</code>在执行脚本时会将脚本输出信息以邮件的形式发送给系统用户，所以必然要调用<code>sendmail</code>，而<code>sendmail</code>又会调用<code>postdrop</code>发送邮件，但是如果系统的<code>postfix</code>服务没有正常运行，那么邮件就会发送不成功，造成<code>sendmail、postdrop、crond</code>进程就无法正常退出，形成大量的僵尸进程。</p>
+<h1 id="解决办法"><a href="#解决办法" class="headerlink" title="解决办法"></a>解决办法</h1><p>先把僵尸进程都干掉,让内存降下来。</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line"><span class="comment"># ps -ef | egrep "sendmail|postdrop" | grep -v grep |xargs kill</span></span><br></pre></td></tr></table></figure>
+
+<p>其实我一开始将postfix服务重启了一下，问题就解决了，观察了一段时间，僵尸进程并没有再次出现。</p>
+<h2 id="永久解决方案"><a href="#永久解决方案" class="headerlink" title="永久解决方案"></a>永久解决方案</h2><p>为防以后<code>postfix</code>挂了再出现类似问题，可以进行如下配置，将<code>crond</code>的邮件通知关闭：<br>将<code>/etc/crontab</code>和<code>/etc/cron.d/0hourly</code>里的<strong><code>MAILTO=root</code></strong>修改为<strong><code>MAILTO=&quot;&quot;</code></strong><br><strong><code>crontab -e</code></strong>第一行增加一段<strong><code>MAILTO=&quot;&quot;</code></strong></p>
+]]></content>
+      <categories>
+        <category>Linux系统管理</category>
+      </categories>
+  </entry>
+  <entry>
+    <title>我的第一篇博文</title>
+    <url>/2017/12/25/%E7%AC%AC%E4%B8%80%E7%AF%87%E5%8D%9A%E5%AE%A2/</url>
+    <content><![CDATA[<p>适逢圣诞来临，我的博客平台也在这一天诞生了。</p>
+<p>搭建这个站点的主要原因是想通过写博文的方式把自己日常工作中遇到的问题整理出来，沉淀一下自己。个人每天记录的笔记比较杂乱无章，也希望通过博文的方式锻炼一下个人的写作和排版能力。</p>
+<p>个人比较喜欢运维相关的技术与知识，作为一个运维的菜鸟希望自己可以走的更高，看得更远，拥有更加广阔的天地。</p>
+<h3 id="个人运维箴言"><a href="#个人运维箴言" class="headerlink" title="个人运维箴言"></a>个人运维箴言</h3><p><code>运维之路目标当远大，该以AI运维为目标；</code></p>
+<p><code>运维之路，要低头看路，切记根基必须扎实；</code></p>
+<p><code>运维之路，当谨慎，小心使得万年船；</code></p>
+<p><code>运维之路，当锋芒，心有冲天劲，才能走的更远。</code></p>
+]]></content>
+      <categories>
+        <category>随笔</category>
+      </categories>
+  </entry>
+</search>

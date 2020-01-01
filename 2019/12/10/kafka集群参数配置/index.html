@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-Hans">
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform">
+<meta http-equiv="Cache-Control" content="no-siteapp">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css">
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css">
+
+<link href="/css/main.css?v=5.1.4" rel="stylesheet" type="text/css">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=5.1.4">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.4" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="Hexo, NexT">
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="写在前面本文主要聊一聊生产环境的kafka方案选型和重要集群参数配置相关的东西。生产环境的kafka集群部署方案前期的需要评估的东西还是挺多，比如kafka版本选择，操作系统选择，以及磁盘类型及磁盘容量相关的预估等。下面简单介绍一下： 部署方案操作系统kafka由scala语言和java开发，编译之后的都是以class文件跑在jvm上面，所以kafka可以运行在市面上所有的OS，比如windos">
+<meta property="og:type" content="article">
+<meta property="og:title" content="kafka生产环境集群方案及参数配置">
+<meta property="og:url" content="http://easyop.github.io/2019/12/10/kafka集群参数配置/index.html">
+<meta property="og:site_name" content="Easy DevOps">
+<meta property="og:description" content="写在前面本文主要聊一聊生产环境的kafka方案选型和重要集群参数配置相关的东西。生产环境的kafka集群部署方案前期的需要评估的东西还是挺多，比如kafka版本选择，操作系统选择，以及磁盘类型及磁盘容量相关的预估等。下面简单介绍一下： 部署方案操作系统kafka由scala语言和java开发，编译之后的都是以class文件跑在jvm上面，所以kafka可以运行在市面上所有的OS，比如windos">
+<meta property="og:locale" content="zh-Hans">
+<meta property="og:image" content="http://easyop.github.io/images/kafka.jpeg">
+<meta property="og:updated_time" content="2020-01-01T10:30:11.802Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="kafka生产环境集群方案及参数配置">
+<meta name="twitter:description" content="写在前面本文主要聊一聊生产环境的kafka方案选型和重要集群参数配置相关的东西。生产环境的kafka集群部署方案前期的需要评估的东西还是挺多，比如kafka版本选择，操作系统选择，以及磁盘类型及磁盘容量相关的预估等。下面简单介绍一下： 部署方案操作系统kafka由scala语言和java开发，编译之后的都是以class文件跑在jvm上面，所以kafka可以运行在市面上所有的OS，比如windos">
+<meta name="twitter:image" content="http://easyop.github.io/images/kafka.jpeg">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    version: '5.1.4',
+    sidebar: {"position":"right","display":"always","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="http://easyop.github.io/2019/12/10/kafka集群参数配置/">
+
+
+
+
+
+  <title>kafka生产环境集群方案及参数配置 | Easy DevOps</title>
+  
+
+
+
+
+
+
+
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-right page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">Easy DevOps</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <h1 class="site-subtitle" itemprop="description">Love Devops,Love Linux</h1>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-home"></i> <br>
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-th"></i> <br>
+            
+            分类
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-archive"></i> <br>
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br>
+            
+            搜索
+          </a>
+        </li>
+      
+    </ul>
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off" placeholder="搜索..." spellcheck="false" type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://easyop.github.io/2019/12/10/kafka集群参数配置/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="杨志恒">
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/images/logo.jpeg">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Easy DevOps">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h2 class="post-title" itemprop="name headline">kafka生产环境集群方案及参数配置</h2>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2019-12-10T15:04:08+08:00">
+                2019-12-10
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category">
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/数据分析/" itemprop="url" rel="index">
+                    <span itemprop="name">数据分析</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/数据分析/KAFKA/" itemprop="url" rel="index">
+                    <span itemprop="name">KAFKA</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+            <span class="post-meta-divider">|</span>
+            <span class="page-pv"><i class="fa fa-file-o"></i>
+            <span class="busuanzi-value" id="busuanzi_value_page_pv"></span>次
+            </span>
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p><img src="/images/kafka.jpeg" alt></p>
+<h1 id="写在前面"><a href="#写在前面" class="headerlink" title="写在前面"></a>写在前面</h1><p>本文主要聊一聊生产环境的kafka方案选型和重要集群参数配置相关的东西。生产环境的kafka集群部署方案前期的需要评估的东西还是挺多，比如kafka版本选择，操作系统选择，以及磁盘类型及磁盘容量相关的预估等。下面简单介绍一下：</p>
+<h1 id="部署方案"><a href="#部署方案" class="headerlink" title="部署方案"></a>部署方案</h1><h2 id="操作系统"><a href="#操作系统" class="headerlink" title="操作系统"></a>操作系统</h2><p>kafka由scala语言和java开发，编译之后的都是以class文件跑在jvm上面，所以kafka可以运行在市面上所有的OS，比如windos,Linux,mac OS但是不同的操作系统的差异还是给kafka集群造成的很大的影响。 毋庸置疑，你应该部署在Linux上面，生产环境的Kafka集群部署在Linux上面的最多，虽然这个结论不会出乎你的意料，但是详细了解选择Linux操作系统的原因还是要了解一下，主要包含以下三个方面：</p>
+<ul>
+<li>I/O模型的使用</li>
+<li>数据网络的传输效率</li>
+<li>社区支持度（毋庸置疑的是Linux平台的社区支持度最好）</li>
+</ul>
+<h3 id="什么是I-O模型？"><a href="#什么是I-O模型？" class="headerlink" title="什么是I/O模型？"></a>什么是I/O模型？</h3><p>简单的理解，I/O模型就是操作系统执行I/O指令的方法。主流的I/O模型有5中类型：阻塞式I/O、非阻塞式I/O、I/O多路复用、信号驱动I/O和异步I/O。每种I/O 模型都有各自典型的使用场景，比如Java中Socket对象的阻塞模式和非阻塞模式就对应于前两种模型;而 Linux中的系统调用select函数就属于I/O多路复用模型;大名鼎鼎的epoll系统调用则介于第三种和第四种模型之间;至于第五种模型，其实很少有Linux系统支持，反而是Windows系统提供了一个叫IOCP线程模型属于这一种。我们无需纠结每种I/O模型的实现细节，通常我认为后一种模型比前一种模型更高级，就像epoll比select要好一样。</p>
+<p>kafka的客户端底层使用了java的selector, java的selector在Linux的实现机制是epoll，而在windows操作系统的实现机制是select,因此kafka部署在Linux上面是占有优势的，能够获得更高效的I/O性能。</p>
+<h3 id="数据网络的传输效率的差别"><a href="#数据网络的传输效率的差别" class="headerlink" title="数据网络的传输效率的差别"></a>数据网络的传输效率的差别</h3><p>kafka生产和消费的消息都是通过网络传输的，而消息又保存在磁盘中，所以呢，kafka需要在磁盘和网络进行大量数据的传输，如果你是一名运维，你肯定听过Zero copy技术，如果没有，那你需要google一下这个名词。zero copy技术简言之就是当数据在磁盘和网络进行传输时避免内核态数据拷贝到用户态而实现的技术。Linux实现了这样的零拷贝机制，但在window上面必须你的java版本足够高才能支持，据我所知，只有java 8以上的版本才有这种技术，因此，我个人认为windows平台上面部署kafka集群只能用于个人开发环境。</p>
+<h2 id="kafka版本"><a href="#kafka版本" class="headerlink" title="kafka版本"></a>kafka版本</h2><p>kafka的版本选择很简单，建议至少使用0.11以上的版本，笔者从未使用过0.11以前的版本，一是工作时间不长，二是觉得到1.0以上的版本没有经过足够的市场验证。建议至少使用0.11版本，0.11是使用者最多的一个版本，也是官方patch版本最多的。所以如果有了问题，技术文档和支持方案也是最多的。</p>
+<h2 id="磁盘"><a href="#磁盘" class="headerlink" title="磁盘"></a>磁盘</h2><p>磁盘资源是对kakfa性能影响最大的，在做kafka集群磁盘时经常面临3个问题，我应该选择什么类型的磁盘，我应该用多大的容量，我是不是应该使用RAID。</p>
+<p>在做磁盘类型选择的时候，我应该选择普通的机械磁盘还是固态硬盘?前者成本低且容量大，但易损坏;后者性能优势大，不过单价高。我给出的建议是使用普通机械硬盘即可。因为kafka虽然大量使用磁盘资源，但他使用的方式大多是顺序读写操作，一定程度上面避免了机械盘随机读写慢的劣势。机械盘物美价廉，它容易损坏造成的可靠性问题可以通过软件层面副本机制来保证，所以使用普通的机械盘即可。当然如果你的集群如果是在像aws这样把计算资源和存储资源完全分离的云上面，这些磁盘类型选择的压根跟你没关系，只需要根据iops来评估需要什么类型就OK。</p>
+<p>第二个问题是我是否需要使用RAID，使用RAID的主要优势在与提供冗余的磁盘存储空间以及提供负载均衡。RAID的优势对于任何一个分布式系统都是有很强的吸引力，不过对于kafka而言，就显得不是很重要了，因为kafka自身实现了冗余机制来提供可靠性，另一个是使用了partion的概念来自己实现了负载均衡。所以在追求性价比的公司可以不使用RAID，使用普通的机械盘组成存储就可以。</p>
+<p>第三个问题是我应该使用多大的磁盘容量。这是一个比较经典的规划问题，kafka集群本身是把消息以日志的方式存储在磁盘上面，消息会默认被保存一段时间后会被清理。这个参数是可配置的，需要根据具体的业务场景来评估你的磁盘容量。 可以使用单位时间内的数据集大小来评估，也可以根据消息大小和单位时间内的消息条数来预估容量。下面给出了2种预估容量的方式：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">10</span>G(每小时数据大小) * <span class="number">168</span>（假设保存<span class="number">7</span>天）* <span class="number">3</span>（保存副本数）x <span class="number">1.1</span>(预留<span class="number">10</span>%的容量) = <span class="number">5.41</span>T（集群总容量）</span><br><span class="line"><span class="number">1</span>KB(平均单条消息大小) * <span class="number">1000</span>，<span class="number">0000</span>（每小时<span class="number">1000</span>万条消息）* <span class="number">168</span>（假设保存<span class="number">7</span>天）* <span class="number">3</span>（保存副本数）x <span class="number">1.1</span>(预留<span class="number">10</span>%的容量) = <span class="number">5.16</span>T（集群总容量）</span><br></pre></td></tr></table></figure>
+
+<h2 id="带宽"><a href="#带宽" class="headerlink" title="带宽"></a>带宽</h2><p>目前市面上面的物理机房网络也好，云服务的vpc网络也好，常见的带宽有2种：1Gbps的千兆网络和10Gbps的万兆网络，千兆网络是大多数公司使用的标准配置了。 千兆网络在实际生产测试中在达到650M-700M之间就会产生丢包。所以最多使用的带宽资源占总带宽的70%，也就是最大资源使用情况下单台broker机器能使用的资源是700Mbps，但在生产环境中机器的带宽资源不可能只留给kafka使用，至少应该预留出来2/3的带宽资源给其他进程使用，比如监控，系统其他进程等其他。这样算下来单个broker使用的带宽也就只有240Mbps。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">集群每小时处理数据量(MB) = 240Mbps/8(单节点每s处理数据大小) * 3600 * n(集群的节点数) / m(副本数)</span><br></pre></td></tr></table></figure>
+
+<p>最小的3个broker的集群，在3个副本的情况下，集群每小时大约处理108G的数据。</p>
+<p>“不谋万世者，不足谋一时；不谋全局者，不足谋一域”, 与其在集群使用过程中费时费力的调整，不如提前在集群部署时就根据实际的业务场景规划所需的环境，通盘考虑部署方案，从多个维度思考部署方案应该如何评估。</p>
+<hr>
+<h1 id="集群重要参数"><a href="#集群重要参数" class="headerlink" title="集群重要参数"></a>集群重要参数</h1><p>在生产环境的kafka集群有很多集群相关配置并未在官方文档中提现，但是这些参数对整个集群的影响是相当大的。我主要根据我所维护的生产环境的参数出发列出一些重要的。</p>
+<h2 id="broker级别参数"><a href="#broker级别参数" class="headerlink" title="broker级别参数"></a>broker级别参数</h2><p>kafka broker的参数相当多，有近200多个，大多数参数我们使用默认值就可以。下面简单介绍一下：<br>存储相关参数：</p>
+<ul>
+<li>log.dirs: 这个参数是笔者认为相当重要的参数，这个参数指定了broker日志存储的目录路径信息，此参数没有默认值，需要你显示的指定。他的格式是使用分号分割的一组目录。 笔者希望你把多块物理磁盘挂载到不同的log.dirs目录里面，这样做也是前文所述不需要使用SSD的原因，这样可以提升读写性能，比起单块磁盘，多块盘有更高的吞吐，相当于逻辑上做了一个RAID0. 而且如果你使用的kafka版本在1.1及其以上版本的话，还能实现故障转移，也就是Failover， broker上面的使用的任何一块磁盘坏了，此磁盘的数据会自动转移到其他正常的磁盘上面，broker还能正常提供工作。 这也是不需要使用RAID的原因。但是笔者使用的0.11版本并不支持此功能，但是笔者维护的集群使用的是AWS的EBS也无需考虑RAID等问题，所以使用0.11版本的用户如果不使用云盘的情况，考虑数据可靠性的情况下使用RAID还是很有必要的。</li>
+</ul>
+<p>zookeeper参数：<br>zookeeper是一个分布式的协调框架，负责协调管理并保存kafka集群的所有元数据信息，比如集群都有哪些broker在运行，已经创建了哪些topic, 以及topic的分区及leader副本等信息。</p>
+<ul>
+<li>zookeeper.connect 这也是一个已逗号分隔的CSV格式参数，值为zookeeper的各节点及端口信息，如<code>zookeeper1:2181,zookeeper2:2181,zookeeper3:2181</code>, 如果多个kafka集群使用同一个zookeeper集群，需要使用zookeeper的chroot概念，chroot类似于别名。假设我们有2个kafka集群（kafka1,kafka2），zookeeper.connect参数的配置如下:<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">zookeeper1:2181,zookeeper2:2181,zookeeper3:2181/kafka1</span><br><span class="line">zookeeper1:2181,zookeeper2:2181,zookeeper3:2181/kafka2</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<p>topic管理相关参数：</p>
+<ul>
+<li>auto.create.topics.enable:是否允许自动创建Topic。生产环境建议设置为false,从运维角度出发，线上应该创建什么topic必须有运维来把控，防止研发误操作来创建很多无用的topic来增加后期的维护成本。</li>
+<li>unclean.leader.election.enable:是否允许Unclean Leader选举。从数据完整性角度考虑，强烈建议关闭Unclean Leader选举这个参数。 每个partition都有多个副本来提供高可用，这些副本只有一个对外提供副本即leader副本。在做leader选举过程中，只有保存数据数据比较多的副本才有资格竞选leader, 那些进度落后太多的副本是没资格做这件事的。如果此参数为false状态，就是不让unclean的副本去做竞选leader的操作。反之，如果一个进度落后很多的副本能够竞选leader，并成功成为了leader,就会造成数据丢失。这种情况在生产环境是不允许出现的。</li>
+<li>auto.leader.rebalance.enable:是否允许定期进行Leader选举。此参数也应该设置为false. 因为定期进行leader选举对性能来讲没有收益，而且如果定期更换leader对客户端程序来讲成本是很高的。虽然此参数的默认参数也是false，但笔者还是建议显示的指定为false。</li>
+</ul>
+<p>数据留存相关参数：</p>
+<ul>
+<li>log.retention.{hour|minutes|ms}:这是一组参数，都是控制一条消息数据被保存多长时 间。从优先级上来说ms设置最高、minutes次之、hour最低。通常情况下使用hour级别的最多，笔者也是使用hour级别参数，<code>log.retention.hour=72</code>表示默认保存7天的数据,自动清除3天前的数据。如果消息要保存的时间要调长，也应相应的调大此值</li>
+<li>log.retention.bytes:这是指定Broker为消息保存的总磁盘容量大小。 默认值是-1，表示你想在这台broker上面保存多少数据都行。建议设置一个合理的上限。 </li>
+<li>message.max.bytes:控制Broker能够接收的最大消息大小。默认值是1000012。实际生产环境中单条消息突破1M的还是很多的，所以设置一个比较大的值是比较保险的，设置的大一些也仅仅只能限制最大的消息大小，并不会多耗费其他资源。</li>
+</ul>
+<h2 id="topic级别参数"><a href="#topic级别参数" class="headerlink" title="topic级别参数"></a>topic级别参数</h2><p>在新版本的kafka中提供了一些topic的相关参数，笔者在生产环境中并未做这些参数配置，这里简单讲说下这些参数：</p>
+<p>如果同时设置了topic级别参数和全局的broker参数，topic级别参数会覆盖全局参数。这个topic参数只是作为一个补充，让我们的生成环境更实用与具体的业务场景，也更灵活。</p>
+<p>消息保存相关参数：</p>
+<ul>
+<li>retention.ms:规定了该Topic消息被保存的时长。默认是7天，即该Topic只保存最近7天的消息。一旦 设置了这个值，它会覆盖掉Broker端的全局参数值。</li>
+<li>retention.bytes:规定了要为该Topic预留多大的磁盘空间。和全局参数作用相似，这个值通常在多 租户的Kafka集群中会有用武之地。当前默认值是-1，表示可以无限使用磁盘空间。</li>
+</ul>
+<p>topic也有最大消息大小相关的参数<code>max.message.byte</code>，如果在全局方面我们不好给定一个合适的值，就设置一个相对大的保险值，然后再有具体的topic来设置<code>max.message.byte</code>,这个在具体是业务场景下是很常见的。</p>
+<p>这些参数可以在创建topic时指定，也可以在修改topic时指定，个人觉得使用一种方式去操作会容易记忆，即在修改topic时区指定对应的参数，因为修改topic这种方式社区应该会统一由kafka-configs脚本来统一管理这些参数。</p>
+<h2 id="JVM参数"><a href="#JVM参数" class="headerlink" title="JVM参数"></a>JVM参数</h2><p>kafka服务端代码是在scala语言编写，最后运行在jvm上。所以说jvm的性能调优是很必要的。如果没有调整过建议调整到你本机内存的一半。只需设定下面两个环境变量就好。</p>
+<ul>
+<li>KAFKA_HEAP_OPTS:指定堆大小。</li>
+<li>KAFKA_JVM_PERFORMANCE_OPTS:指定GC参数。<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">export KAFKA_HEAP_OPTS=--Xms6g  --Xmx6g</span><br><span class="line">export KAFKA_JVM_PERFORMANCE_OPTS="-server -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+DisableExplicitGC -Djava.awt.headless=true"</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h2 id="操作系统参数"><a href="#操作系统参数" class="headerlink" title="操作系统参数"></a>操作系统参数</h2><p>Kafka并不需要设置太多的OS 参数，但有些因素最好还是关注一下，比如下面这几个:</p>
+<ul>
+<li><code>文件描述符限制</code>,笔者调整到100000,调整这个值并不会对系统有太大的影响,其次，如果你和笔者一样使用supervisord来管理进程的话，要把supervisord的<code>minfds</code>设置为和ulimit大小相差不大的值，不设置后果很严重，你会看到<code>Too many open files”的错误。</code></li>
+<li><code>文件系统类型</code> , 我建议使用xfs，官方测试出来的结果也要强于ext4等文件系统</li>
+<li><code>Swappiness</code> ,很多运维在做规划服务器规划过程中是不设置swap的。我们生产环境也是如此，但是我个人反倒觉得不要禁用swap分区，可以设置一个较小的值用于报警，因为一旦禁用swap分区，当内存耗尽时会触发OOM killer组件，会随机挑选进程去kill掉，根本不给用户任何预警，这也是我们使用supervisord去管理服务的一个方面，当进程挂掉之后，supervisord会把此进程重新拉起。</li>
+<li><code>提交时间</code>, 提交时间也就是flush的落盘时间。向Kafka发送数据并不是真要等数据被写入磁盘才会认为成功，而是只要数据被写入到操作系统的页缓存(Page Cache)上就可以了，随后操作系统根据LRU算法会定期将页缓存上的“脏”数据落盘到物理磁盘上。这个定期就是由提交时间来确定的，默认是5秒。一般情况下我们 会认为这个时间太频繁了，可以适当地增加提交间隔来降低物理磁盘的写操作。当然你可能会有这样的疑问:如果在页缓存中的数据在写入到磁盘前机器宕机了，那岂不是数据就丢失了。的确，这种情况数据确实就丢失了，但鉴于Kafka在软件层面已经提供了多副本的冗余机制，因此这里稍微拉大提交间隔去换取性能 还是一个合理的做法。</li>
+</ul>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/09/03/容器管理之Docker常用命令/" rel="next" title="容器管理之Docker常用命令">
+                <i class="fa fa-chevron-left"></i> 容器管理之Docker常用命令
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/12/25/Python删除fastdfs图片/" rel="prev" title="Python删除fastdfs图片">
+                Python删除fastdfs图片 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+        
+  <div class="bdsharebuttonbox">
+    <a href="#" class="bds_tsina" data-cmd="tsina" title="分享到新浪微博"></a>
+    <a href="#" class="bds_douban" data-cmd="douban" title="分享到豆瓣网"></a>
+    <a href="#" class="bds_sqq" data-cmd="sqq" title="分享到QQ好友"></a>
+    <a href="#" class="bds_qzone" data-cmd="qzone" title="分享到QQ空间"></a>
+    <a href="#" class="bds_weixin" data-cmd="weixin" title="分享到微信"></a>
+    <a href="#" class="bds_tieba" data-cmd="tieba" title="分享到百度贴吧"></a>
+    <a href="#" class="bds_twi" data-cmd="twi" title="分享到Twitter"></a>
+    <a href="#" class="bds_fbook" data-cmd="fbook" title="分享到Facebook"></a>
+    <a href="#" class="bds_more" data-cmd="more"></a>
+    <a class="bds_count" data-cmd="count"></a>
+  </div>
+  <script>
+    window._bd_share_config = {
+      "common": {
+        "bdText": "",
+        "bdMini": "2",
+        "bdMiniList": false,
+        "bdPic": ""
+      },
+      "share": {
+        "bdSize": "16",
+        "bdStyle": "0"
+      },
+      "image": {
+        "viewList": ["tsina", "douban", "sqq", "qzone", "weixin", "twi", "fbook"],
+        "viewText": "分享到：",
+        "viewSize": "16"
+      }
+    }
+  </script>
+
+<script>
+  with(document)0[(getElementsByTagName('head')[0]||body).appendChild(createElement('script')).src='//bdimg.share.baidu.com/static/api/js/share.js?cdnversion='+~(-new Date()/36e5)];
+</script>
+
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image" src="/images/logo.jpeg" alt="杨志恒">
+            
+              <p class="site-author-name" itemprop="name">杨志恒</p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-categories">
+                <a href="/categories/index.html">
+                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-name">分类</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                
+                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-name">标签</span>
+                
+              </div>
+            
+
+          </nav>
+
+          
+
+          
+            <div class="links-of-author motion-element">
+                
+                  <span class="links-of-author-item">
+                    <a href="https://github.com/easyop" target="_blank" title="GitHub">
+                      
+                        <i class="fa fa-fw fa-github"></i>GitHub</a>
+                  </span>
+                
+                  <span class="links-of-author-item">
+                    <a href="mailto:easydevops@163.com" target="_blank" title="E-Mail">
+                      
+                        <i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  </span>
+                
+            </div>
+          
+
+          
+          
+
+          
+          
+            <div class="links-of-blogroll motion-element links-of-blogroll-block">
+              <div class="links-of-blogroll-title">
+                <i class="fa  fa-fw fa-link"></i>
+                友情链接
+              </div>
+              <ul class="links-of-blogroll-list">
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="http://yangzhiheng.blog.51cto.com" title="YangZhiHeng_51CTO" target="_blank">YangZhiHeng_51CTO</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://www.cnblogs.com/topicjie/" title="TopicJie" target="_blank">TopicJie</a>
+                  </li>
+                
+              </ul>
+            </div>
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#写在前面"><span class="nav-number">1.</span> <span class="nav-text">写在前面</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#部署方案"><span class="nav-number">2.</span> <span class="nav-text">部署方案</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#操作系统"><span class="nav-number">2.1.</span> <span class="nav-text">操作系统</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#什么是I-O模型？"><span class="nav-number">2.1.1.</span> <span class="nav-text">什么是I/O模型？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#数据网络的传输效率的差别"><span class="nav-number">2.1.2.</span> <span class="nav-text">数据网络的传输效率的差别</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kafka版本"><span class="nav-number">2.2.</span> <span class="nav-text">kafka版本</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#磁盘"><span class="nav-number">2.3.</span> <span class="nav-text">磁盘</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#带宽"><span class="nav-number">2.4.</span> <span class="nav-text">带宽</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#集群重要参数"><span class="nav-number">3.</span> <span class="nav-text">集群重要参数</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#broker级别参数"><span class="nav-number">3.1.</span> <span class="nav-text">broker级别参数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#topic级别参数"><span class="nav-number">3.2.</span> <span class="nav-text">topic级别参数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#JVM参数"><span class="nav-number">3.3.</span> <span class="nav-text">JVM参数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#操作系统参数"><span class="nav-number">3.4.</span> <span class="nav-text">操作系统参数</span></a></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">www.easydevops.tech 杨志恒</span>
+
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="site-uv">
+      <i class="fa fa-user"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+      人次
+    </span>
+  
+
+  
+    <span class="site-pv">
+      <i class="fa fa-eye"></i>
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+      次
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/canvas-nest/canvas-nest.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.4"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.4"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.4"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+
+  
+<script>
+(function(){
+    var bp = document.createElement('script');
+    var curProtocol = window.location.protocol.split(':')[0];
+    if (curProtocol === 'https') {
+        bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';        
+    }
+    else {
+        bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+    }
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(bp, s);
+})();
+</script>
+
+
+  
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
